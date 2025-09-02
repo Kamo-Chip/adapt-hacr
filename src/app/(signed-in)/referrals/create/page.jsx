@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,24 +14,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { User, Phone, FileText, Upload, CalendarIcon, Shield, Search, X, CheckCircle } from "lucide-react"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
+import { fetchHospitals, findOptimalHospital, validHospitalSelection } from "@/utils/db/client"
+import { DEPARTMENTS } from "@/app/onboard/page"
+import Loading from "@/components/loading"
+import { useUser } from "@clerk/nextjs"
 
-const departments = [
-  "Emergency Medicine",
-  "Cardiology",
-  "Neurology",
-  "Orthopedics",
-  "Pediatrics",
-  "Obstetrics & Gynecology",
-  "Internal Medicine",
-  "Surgery",
-  "Radiology",
-  "Oncology",
-  "Psychiatry",
-  "Dermatology",
-  "Ophthalmology",
-  "ENT",
-  "Urology",
-]
+import toast from "react-hot-toast"
 
 const urgencyLevels = [
   { value: "high", label: "High Priority", color: "urgent-red", description: "Immediate attention required" },
@@ -40,45 +28,91 @@ const urgencyLevels = [
 ]
 
 export default function CreateReferralPage() {
+
+  const {user} = useUser();
+
   const [date, setDate] = useState()
   const [documents, setDocuments] = useState([])
   const [selectedHospital, setSelectedHospital] = useState("")
   const [referralType, setReferralType] = useState("general")
+  const [loading, setLoading] = useState(true)
+  const [hospitals, setHospitals] = useState([])
 
   const [formData, setFormData] = useState({
-    // Patient Information
     patientName: "",
-    patientId: "",
-    phoneNumber: "",
     whatsappNumber: "",
-    dateOfBirth: "",
     gender: "",
-    address: "",
     emergencyContact: "",
-    emergencyPhone: "",
-
-    // Medical Information
     medicalCondition: "",
     department: "",
     urgency: "",
     reasonForReferral: "",
     clinicalSummary: "",
     currentTreatment: "",
-
-    // Consent and Preferences
-    medicalConsent: false,
-    whatsappConsent: false,
+    medicalConsent:true,
+    whatsappConsent: true,
     preferredDate: null,
-
-    // Additional Details
     allergies: "",
     medications: "",
-    notes: "",
   })
 
-  const handleInputChange = (field, onValueChange) => {
-    setFormData((prev) => ({ ...prev, [field]: value }))
+  const [errors, setErrors] = useState({})
+
+  useEffect(() => {
+    const loadHospitals = async () => {
+      try {
+        const data = await fetchHospitals(user.id)
+        setHospitals(data)
+      } catch (err) {
+        console.log(err.message)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadHospitals()
+  }, [user])
+
+  const phoneRegex = /^\+?\d{9,15}$/
+
+  const validateField = (field, value) => {
+    switch (field) {
+      case "patientName":
+        return value.trim() === "" ? "Required" : ""
+      case "whatsappNumber":
+        return !phoneRegex.test(value) ? "Invalid phone number" : ""
+      case "medicalCondition":
+      case "reasonForReferral":
+        return value.trim() === "" ? "Required" : ""
+      case "department":
+      case "urgency":
+        return value === "" ? "Required" : ""
+      case "medicalConsent":
+      case "whatsappConsent":
+        return value !== true ? "Required" : ""
+      case "selectedHospital":
+        return referralType === "specific" && value === "" ? "Required" : ""
+      default:
+        return ""
+    }
   }
+
+  const handleInputChangeValidated = (field, valueOrEvent) => {
+    const value = valueOrEvent?.target ? valueOrEvent.target.value : valueOrEvent
+    setFormData((prev) => ({ ...prev, [field]: value }))
+    setErrors((prev) => ({ ...prev, [field]: validateField(field, value) }))
+  }
+
+  const handlePhoneChange = (field, e) => {
+    let value = e.target.value
+    value = value.replace(/[^\d+]/g, "")
+    setFormData((prev) => ({ ...prev, [field]: value }))
+    setErrors((prev) => ({
+      ...prev,
+      [field]: !phoneRegex.test(value) ? "Invalid phone number" : ""
+    }))
+  }
+
 
   const handleFileUpload = (event) => {
     const files = Array.from(event.target.files || [])
@@ -89,28 +123,59 @@ export default function CreateReferralPage() {
     setDocuments((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const handleSubmit = () => {
-    console.log("[v0] Submitting referral:", { formData, documents, selectedHospital, referralType })
-    // In real app, this would submit to API
-  }
+  const handleSubmit = async () => {
+    if (!user?.id) {
+      toast.error("User not authenticated");
+      return;
+    }
+
+    try {
+      if (referralType === "specific") {
+        const result = await validHospitalSelection(selectedHospital, formData.department);
+        if (!result.isValid) {
+          toast.error(
+            !result.hasDepartment
+              ? "Selected hospital does not have this department."
+              : "No capacity available in the selected department."
+          );
+          return;
+        }
+      } else {
+        const hospitaldata = await findOptimalHospital(user.id, formData.department);
+        if (!hospitaldata.success) {
+          toast.error(hospitaldata.message);
+          return;
+        } else {
+          toast.success(hospitaldata.message);
+
+        }
+      }
+
+      console.log("[v0] Submitting referral:", { formData, documents, selectedHospital, referralType });
+      toast.success("Referral submitted successfully!");
+    } catch (err) {
+      console.error(err);
+      toast.error(err.message || "Something went wrong");
+    }
+  };
+
 
   const isFormValid = () => {
     return (
       formData.patientName &&
-      formData.patientId &&
-      formData.phoneNumber &&
+      phoneRegex.test(formData.whatsappNumber) &&
       formData.medicalCondition &&
       formData.department &&
       formData.urgency &&
       formData.reasonForReferral &&
-      formData.medicalConsent &&
-      formData.whatsappConsent
+      (referralType === "general" || selectedHospital != "")
     )
   }
 
+  if (loading) return <Loading />
+
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <div className="border-b bg-card/50 backdrop-blur-sm">
         <div className="container mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
@@ -134,7 +199,6 @@ export default function CreateReferralPage() {
       </div>
 
       <div className="container mx-auto px-4 py-8 max-w-4xl space-y-8">
-        {/* Patient Information */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -150,67 +214,34 @@ export default function CreateReferralPage() {
                 <Input
                   id="patientName"
                   value={formData.patientName}
-                  onChange={(e) => handleInputChange("patientName", e.target.value)}
+                  onChange={(e) => handleInputChangeValidated("patientName", e)}
                   placeholder="Enter patient's full name"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="patientId">Patient ID *</Label>
-                <Input
-                  id="patientId"
-                  value={formData.patientId}
-                  onChange={(e) => handleInputChange("patientId", e.target.value)}
-                  placeholder="Hospital patient ID"
+                  className={errors.patientName ? "border-red-500 focus:border-red-500 focus:ring-red-500" : ""}
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label htmlFor="phoneNumber">Phone Number *</Label>
-                <div className="flex">
-                  <div className="flex items-center px-3 border border-r-0 rounded-l-md bg-muted">
-                    <Phone className="w-4 h-4 text-muted-foreground" />
-                  </div>
-                  <Input
-                    id="phoneNumber"
-                    value={formData.phoneNumber}
-                    onChange={(e) => handleInputChange("phoneNumber", e.target.value)}
-                    placeholder="+254-700-123-456"
-                    className="rounded-l-none"
-                  />
-                </div>
+            <div className="flex">
+              <div className="flex items-center px-3 border border-r-0 rounded-l-md bg-muted">
+                <Phone className="w-4 h-4 text-trust-green" />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="whatsappNumber">WhatsApp Number</Label>
-                <div className="flex">
-                  <div className="flex items-center px-3 border border-r-0 rounded-l-md bg-muted">
-                    <Phone className="w-4 h-4 text-trust-green" />
-                  </div>
-                  <Input
-                    id="whatsappNumber"
-                    value={formData.whatsappNumber}
-                    onChange={(e) => handleInputChange("whatsappNumber", e.target.value)}
-                    placeholder="+254-700-123-456"
-                    className="rounded-l-none"
-                  />
-                </div>
-              </div>
+              <Input
+                id="whatsappNumber"
+                value={formData.whatsappNumber}
+                onChange={(e) => handlePhoneChange("whatsappNumber", e)}
+                placeholder="060-700-1234"
+                className={cn(
+                  "rounded-l-none transition-all duration-200 focus:outline-none focus:ring-4",
+                  errors.whatsappNumber
+                    ? "border-red-500 focus:ring-red-400"
+                    : "border-gray-300 focus:ring-medical-blue"
+                )}
+              />
             </div>
-
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="space-y-2">
-                <Label htmlFor="dateOfBirth">Date of Birth</Label>
-                <Input
-                  id="dateOfBirth"
-                  type="date"
-                  value={formData.dateOfBirth}
-                  onChange={(e) => handleInputChange("dateOfBirth", e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
                 <Label htmlFor="gender">Gender</Label>
-                <Select value={formData.gender} onValueChange={(value) => handleInputChange("gender", value)}>
+                <Select value={formData.gender} onValueChange={(value) => handleInputChangeValidated("gender", value)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select gender" />
                   </SelectTrigger>
@@ -226,21 +257,10 @@ export default function CreateReferralPage() {
                 <Input
                   id="emergencyContact"
                   value={formData.emergencyContact}
-                  onChange={(e) => handleInputChange("emergencyContact", e.target.value)}
+                  onChange={(e) => handleInputChangeValidated("emergencyContact", e)}
                   placeholder="Contact name"
                 />
               </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="address">Address</Label>
-              <Textarea
-                id="address"
-                value={formData.address}
-                onChange={(e) => handleInputChange("address", e.target.value)}
-                placeholder="Patient's address"
-                rows={2}
-              />
             </div>
           </CardContent>
         </Card>
@@ -258,14 +278,14 @@ export default function CreateReferralPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <Label htmlFor="department">Medical Department *</Label>
-                <Select value={formData.department} onValueChange={(value) => handleInputChange("department", value)}>
+                <Select value={formData.department} onValueChange={(value) => handleInputChangeValidated("department", value)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select department" />
                   </SelectTrigger>
                   <SelectContent>
-                    {departments.map((dept) => (
-                      <SelectItem key={dept} value={dept}>
-                        {dept}
+                    {DEPARTMENTS.map((dept, idx) => (
+                      <SelectItem key={idx} value={dept.value}>
+                        {dept.title}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -273,7 +293,7 @@ export default function CreateReferralPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="urgency">Urgency Level *</Label>
-                <Select value={formData.urgency} onValueChange={(value) => handleInputChange("urgency", value)}>
+                <Select value={formData.urgency} onValueChange={(value) => handleInputChangeValidated("urgency", value)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select urgency" />
                   </SelectTrigger>
@@ -296,7 +316,7 @@ export default function CreateReferralPage() {
               <Textarea
                 id="medicalCondition"
                 value={formData.medicalCondition}
-                onChange={(e) => handleInputChange("medicalCondition", e.target.value)}
+                onChange={(e) => handleInputChangeValidated("medicalCondition", e)}
                 placeholder="Describe the patient's medical condition"
                 rows={3}
               />
@@ -307,7 +327,7 @@ export default function CreateReferralPage() {
               <Textarea
                 id="reasonForReferral"
                 value={formData.reasonForReferral}
-                onChange={(e) => handleInputChange("reasonForReferral", e.target.value)}
+                onChange={(e) => handleInputChangeValidated("reasonForReferral", e)}
                 placeholder="Why is this referral necessary?"
                 rows={3}
               />
@@ -318,7 +338,7 @@ export default function CreateReferralPage() {
               <Textarea
                 id="clinicalSummary"
                 value={formData.clinicalSummary}
-                onChange={(e) => handleInputChange("clinicalSummary", e.target.value)}
+                onChange={(e) => handleInputChangeValidated("clinicalSummary", e)}
                 placeholder="Brief clinical summary and relevant history"
                 rows={3}
               />
@@ -330,7 +350,7 @@ export default function CreateReferralPage() {
                 <Textarea
                   id="allergies"
                   value={formData.allergies}
-                  onChange={(e) => handleInputChange("allergies", e.target.value)}
+                  onChange={(e) => handleInputChangeValidated("allergies", e)}
                   placeholder="List any known allergies"
                   rows={2}
                 />
@@ -340,7 +360,7 @@ export default function CreateReferralPage() {
                 <Textarea
                   id="medications"
                   value={formData.medications}
-                  onChange={(e) => handleInputChange("medications", e.target.value)}
+                  onChange={(e) => handleInputChangeValidated("medications", e)}
                   placeholder="List current medications"
                   rows={2}
                 />
@@ -477,11 +497,9 @@ export default function CreateReferralPage() {
                     <SelectValue placeholder="Choose a hospital" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="knh">South Africatta National Hospital</SelectItem>
-                    <SelectItem value="aku">Aga Khan University Hospital</SelectItem>
-                    <SelectItem value="nairobi">Nairobi Hospital</SelectItem>
-                    <SelectItem value="mater">Mater Misericordiae Hospital</SelectItem>
-                    <SelectItem value="karen">Karen Hospital</SelectItem>
+                    {hospitals?.map((hospital, idx) => (
+                      <SelectItem key={idx} value={hospital.id}>{hospital.name}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -530,7 +548,7 @@ export default function CreateReferralPage() {
                 <Checkbox
                   id="medicalConsent"
                   checked={formData.medicalConsent}
-                  onCheckedChange={(checked) => handleInputChange("medicalConsent", checked)}
+                  onCheckedChange={(checked) => handleInputChangeValidated("medicalConsent", checked)}
                 />
                 <div className="space-y-1">
                   <Label
@@ -549,7 +567,7 @@ export default function CreateReferralPage() {
                 <Checkbox
                   id="whatsappConsent"
                   checked={formData.whatsappConsent}
-                  onCheckedChange={(checked) => handleInputChange("whatsappConsent", checked)}
+                  onCheckedChange={(checked) => handleInputChangeValidated("whatsappConsent", checked)}
                 />
                 <div className="space-y-1">
                   <Label
@@ -563,17 +581,6 @@ export default function CreateReferralPage() {
                   </p>
                 </div>
               </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="notes">Additional Notes</Label>
-              <Textarea
-                id="notes"
-                value={formData.notes}
-                onChange={(e) => handleInputChange("notes", e.target.value)}
-                placeholder="Any additional information or special instructions"
-                rows={3}
-              />
             </div>
           </CardContent>
         </Card>
