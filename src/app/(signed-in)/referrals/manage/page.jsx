@@ -43,6 +43,8 @@ import {
 /** @typedef {import("../types").User} User */
 /** @typedef {import("../types").Hospital} Hospital */
 /** @typedef {import("../types").ReferralDocument} ReferralDocument */
+/** @typedef {import("@supabase/supabase-js").PostgrestError} PostgrestError */
+
 
 export default function ReferralManagePage({clerkId}) {
   const [referrals, setReferrals] = useState(/** @type {Referral[]} */([]));
@@ -61,11 +63,15 @@ export default function ReferralManagePage({clerkId}) {
         getGeneralReferrals(clerkId),
       ]);
 
+      /** @type {Referral[]} */
+      const specific = specRes.status === "completed" ? (specRes.value ?? []) : [];
+      /** @type {Referral[]} */
+      const general  = genRes.status === "completed" ? (genRes.value ?? []) : [];
     
 
       // merge, dedupe by id, newest first
       const mergedMap = new Map();
-      [...(specific ?? []), ...(general ?? [])].forEach(r => r && mergedMap.set(r.id, r));
+      [...specific, ...general].forEach(r => r && mergedMap.set(r.id, r));
       const merged = Array.from(mergedMap.values()).sort(
         (a, b) => new Date(b.created_at) - new Date(a.created_at)
       );
@@ -99,6 +105,8 @@ export default function ReferralManagePage({clerkId}) {
   }
  };
 
+ 
+
  const onReject = async(id) => {
   setLoading(true);
   setError(null);
@@ -131,35 +139,28 @@ export default function ReferralManagePage({clerkId}) {
   if (error) return <p>Failed to load referrals.</p>;
 
   const getUrgencyColor = (urgency) => {
-    switch (urgency) {
-      case "high":
-        return "urgent-red"
-      case "medium":
-        return "warning-amber"
-      case "low":
-        return "trust-green"
-      default:
-        return "muted"
+    switch ((urgency ?? "").toLowerCase()) {
+      case "high": return "urgent-red";
+      case "medium": return "warning-amber";
+      case "low": return "trust-green";
+      case "critical": return "urgent-red";
+      default: return "muted";
     }
-  }
+  };
 
   const getStatusColor = (status) => {
-    switch (status) {
-      case "pending":
-        return "warning-amber"
-      case "accepted":
-        return "trust-green"
-      case "rejected":
-        return "urgent-red"
-      case "completed":
-        return "medical-blue"
-      default:
-        return "muted"
+    switch ((status ?? "").toLowerCase()) {
+      case "pending": return "warning-amber";
+      case "approved": return "trust-green";   // was "accepted"
+      case "rejected": return "urgent-red";
+      case "completed": return "medical-blue";
+      default: return "muted";
     }
-  }
+  };
 
-  const specificReferrals = referrals.filter((r) => r.type === "specific")
-  const generalReferrals = referrals.filter((r) => r.type === "general")
+
+  const specificReferrals = referrals.filter((r) => r.referral_type === "specific")
+  const generalReferrals = referrals.filter((r) => r.referral_type === "general")
 
   const ReferralCard = ({ referral }) => (
     <Card className="border-2 hover:border-medical-blue/20 transition-colors">
@@ -184,7 +185,7 @@ export default function ReferralManagePage({clerkId}) {
               <div className="flex items-center gap-4 text-sm text-muted-foreground">
                 <div className="flex items-center gap-1">
                   <Calendar className="w-4 h-4" />
-                  <span>{format(referral.createdAt, "MMM dd, yyyy 'at' HH:mm")}</span>
+                  <span>{format(new Date(referral.createdAt), "MMM dd, yyyy 'at' HH:mm")}</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <Clock className="w-4 h-4" />
@@ -337,9 +338,8 @@ export default function ReferralManagePage({clerkId}) {
                           <Button variant="outline">Cancel</Button>
                           <Button
                             variant="destructive"
-                            onClick={() => {
-                              rejectReferral(referral.id, rejectionReason)
-                              setRejectionReason("")
+                            onClick={ async () => {
+                              await onReject(referral.id);
                             }}
                             disabled={!rejectionReason.trim()}
                           >
@@ -351,7 +351,7 @@ export default function ReferralManagePage({clerkId}) {
                   </Dialog>
 
                   <Button
-                    onClick={() => acceptReferral(referral.id)}
+                    onClick={() => onApprove(referral.id)}
                     className="bg-trust-green hover:bg-trust-green/90 text-trust-green-foreground"
                   >
                     <CheckCircle className="w-4 h-4 mr-2" />
