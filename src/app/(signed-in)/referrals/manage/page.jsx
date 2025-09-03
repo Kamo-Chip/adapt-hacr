@@ -43,7 +43,7 @@ import {
 /** @typedef {import("../types").User} User */
 /** @typedef {import("../types").Hospital} Hospital */
 /** @typedef {import("../types").ReferralDocument} ReferralDocument */
-/** @typedef {import("@supabase/supabase-js").PostgrestError} PostgrestError */
+// /** @typedef {import("@supabase/supabase-js").PostgrestError} PostgrestError */
 
 
 export default function ReferralManagePage({clerkId}) {
@@ -362,7 +362,7 @@ export default function ReferralManagePage({clerkId}) {
 
               {referral.status === "accepted" && (
                 <Button
-                  onClick={() => completeReferral(referral.id)}
+                  onClick={() => onComplete(referral.id)}
                   className="bg-medical-blue hover:bg-medical-blue/90"
                 >
                   <CheckCircle className="w-4 h-4 mr-2" />
