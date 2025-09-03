@@ -52,7 +52,7 @@ const getUrgencyColor = (urgency) => {
         default:
             return "muted"
     }
-}
+};
 
 const getStatusColor = (status) => {
     switch (status) {

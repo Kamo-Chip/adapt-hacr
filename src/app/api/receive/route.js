@@ -22,6 +22,6 @@ export async function POST(req) {
   twiml.message("Message received. Thank you!");
 
   return new NextResponse(twiml.toString(), {
-    headers: { "Content-Type": "application/xml" },
+    headers: { "Content-Type": "text/xml" },
   });
 }

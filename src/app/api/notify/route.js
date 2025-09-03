@@ -2,18 +2,26 @@ import { NextResponse } from "next/server";
 import twilio from "twilio";
 
 export async function POST(req) {
-  const { to, dateStr, timeStr } = await req.json();
+  const { to, name, dateStr, timeStr, type } = await req.json();
 
   const client = twilio(
     process.env.TWILIO_ACCOUNT_SID,
     process.env.TWILIO_AUTH_TOKEN
   );
 
+  const body =
+    type === "initial"
+      ? `Hi ${name}, your referral has been created for ${dateStr}. We will notify you once the receiving hospital confirms.`
+      : type === "confirmed"
+      ? `Hi ${name}, your referral has been confirmed for ${dateStr} at ${timeStr}.`
+      : type === "cancelled"
+      ? `Hi ${name}, your referral has been cancelled. If you have any questions, please contact us.`
+      : "";
+
   const msg = await client.messages.create({
-    contentSid: "HXb5b62575e6e4ff6129ad7c8efe1f983e",
-    contentVariables: JSON.stringify({ 1: dateStr, 2: timeStr }),
-    from: `whatsapp:+14155238886`,
-    to: `whatsapp:${to}`,
+    body: body,
+    from: `+15176843823`,
+    to: `${to}`,
   });
 
   return NextResponse.json({ sid: msg.sid });
