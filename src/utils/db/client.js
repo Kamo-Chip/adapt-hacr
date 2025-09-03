@@ -353,13 +353,15 @@ export async function getSpecificReferrals(clerk_id) {
 
   if(!hospital_id) return [];
 
-  const { data, error } = await supabase()
+  const { data, error } = await supabase
     .from("referrals")
     .select("*")
     .eq("to_hospital_id", hospital_id)
     .eq("status", "pending")
     .eq("referral_type", "specific")
     .order("created_at", { ascending: false });
+
+    console.log("Specific referrals data:", data);
   if(error) throw error;
   return data ?? [];
 }
@@ -370,7 +372,7 @@ export async function getGeneralReferrals(clerk_id) {
 
   if(!hospital_id) return [];
 
-  const { data, error } = await supabase()
+  const { data, error } = await supabase
     .from("referrals")
     .select("*")
     .eq("to_hospital_id", hospital_id)
