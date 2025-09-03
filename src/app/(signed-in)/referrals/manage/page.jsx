@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -31,139 +31,246 @@ import {
   MapPin,
 } from "lucide-react"
 import { format } from "date-fns"
+import {
+  getSpecificReferrals,
+  getGeneralReferrals,
+  approveReferral,          // NOTE: updates ALL pending referrals assigned to this clerk_id   // NOTE: updates ALL pending assigned to this clerk_id
+  rejectReferral,    // NOTE: currently sets status back to "pending" in your code
+  completeReferral,          // NOTE: updates ALL approved assigned to this clerk_id
+} from "@/utils/db/client.js"  
+
+/** @typedef {import("../types").Referral} Referral */
+/** @typedef {import("../types").User} User */
+/** @typedef {import("../types").Hospital} Hospital */
+/** @typedef {import("../types").ReferralDocument} ReferralDocument */
 
 // Mock referral data - in real app this would come from API
-const referrals = [
-  {
-    id: "REF-2024-001234",
-    type: "specific",
-    status: "pending",
-    urgency: "high",
-    patient: {
-      name: "John Doe",
-      id: "P-2024-001",
-      phone: "+254-700-123-456",
-      whatsapp: "+254-700-123-456",
-      age: 45,
-      gender: "male",
-    },
-    referring: {
-      hospital: "South Africatta National Hospital",
-      doctor: "Dr. Sarah Johnson",
-      department: "Emergency Medicine",
-    },
-    medical: {
-      condition: "Acute myocardial infarction with ST elevation",
-      department: "Cardiology",
-      summary:
-        "45-year-old male presenting with severe chest pain, elevated troponins, and ST elevation on ECG. Requires immediate cardiac catheterization and possible PCI.",
-      allergies: "Penicillin",
-      medications: "Aspirin 75mg, Atorvastatin 40mg",
-      notes: "Patient is stable but requires urgent intervention. Family history of CAD.",
-    },
-    documents: [
-      { name: "ECG_Report.pdf", type: "medical_report", size: "2.3 MB" },
-      { name: "Lab_Results.pdf", type: "lab_result", size: "1.8 MB" },
-      { name: "Chest_Xray.jpg", type: "xray", size: "4.2 MB" },
-    ],
-    createdAt: new Date("2024-01-15T10:30:00"),
-    preferredDate: new Date("2024-01-15T14:00:00"),
-    aiSummary:
-      "Critical cardiac case requiring immediate intervention. Patient presents with classic STEMI symptoms and requires emergency cardiac catheterization within 90 minutes for optimal outcomes.",
-  },
-  {
-    id: "REF-2024-001235",
-    type: "general",
-    status: "pending",
-    urgency: "medium",
-    patient: {
-      name: "Jane Smith",
-      id: "P-2024-002",
-      phone: "+254-700-234-567",
-      whatsapp: "+254-700-234-567",
-      age: 32,
-      gender: "female",
-    },
-    referring: {
-      hospital: "Nairobi Hospital",
-      doctor: "Dr. Michael Chen",
-      department: "Internal Medicine",
-    },
-    medical: {
-      condition: "Chronic headaches with neurological symptoms",
-      department: "Neurology",
-      summary:
-        "32-year-old female with 3-month history of progressive headaches, visual disturbances, and occasional numbness in left arm. MRI shows possible space-occupying lesion.",
-      allergies: "None known",
-      medications: "Ibuprofen 400mg PRN",
-      notes: "Patient anxious about symptoms. Requires neurological evaluation and possible advanced imaging.",
-    },
-    documents: [
-      { name: "MRI_Brain.pdf", type: "medical_report", size: "8.5 MB" },
-      { name: "Neurological_Exam.pdf", type: "medical_report", size: "1.2 MB" },
-    ],
-    createdAt: new Date("2024-01-15T09:15:00"),
-    preferredDate: new Date("2024-01-16T10:00:00"),
-    aiSummary:
-      "Neurological case requiring specialist evaluation. Progressive symptoms with imaging findings suggest need for comprehensive neurological workup and possible neurosurgical consultation.",
-  },
-  {
-    id: "REF-2024-001236",
-    type: "specific",
-    status: "accepted",
-    urgency: "low",
-    patient: {
-      name: "Michael Johnson",
-      id: "P-2024-003",
-      phone: "+254-700-345-678",
-      whatsapp: "+254-700-345-678",
-      age: 28,
-      gender: "male",
-    },
-    referring: {
-      hospital: "Mater Hospital",
-      doctor: "Dr. Emily Rodriguez",
-      department: "Orthopedics",
-    },
-    medical: {
-      condition: "Chronic knee pain following sports injury",
-      department: "Orthopedics",
-      summary:
-        "28-year-old athlete with persistent knee pain 6 months post-injury. Conservative treatment failed. MRI shows meniscal tear requiring arthroscopic repair.",
-      allergies: "None",
-      medications: "Naproxen 500mg BD",
-      notes: "Patient is motivated for surgery and rehabilitation. Good candidate for arthroscopic procedure.",
-    },
-    documents: [
-      { name: "Knee_MRI.pdf", type: "medical_report", size: "6.1 MB" },
-      { name: "Physical_Therapy_Notes.pdf", type: "medical_report", size: "0.8 MB" },
-    ],
-    createdAt: new Date("2024-01-14T16:45:00"),
-    preferredDate: new Date("2024-01-18T08:00:00"),
-    acceptedAt: new Date("2024-01-15T08:30:00"),
-    aiSummary:
-      "Elective orthopedic case for arthroscopic knee surgery. Well-documented case with clear surgical indication and good patient compliance expected.",
-  },
-]
+// const referrals = [
+//   {
+//     id: "REF-2024-001234",
+//     type: "specific",
+//     status: "pending",
+//     urgency: "high",
+//     patient: {
+//       name: "John Doe",
+//       id: "P-2024-001",
+//       phone: "+254-700-123-456",
+//       whatsapp: "+254-700-123-456",
+//       age: 45,
+//       gender: "male",
+//     },
+//     referring: {
+//       hospital: "South Africatta National Hospital",
+//       doctor: "Dr. Sarah Johnson",
+//       department: "Emergency Medicine",
+//     },
+//     medical: {
+//       condition: "Acute myocardial infarction with ST elevation",
+//       department: "Cardiology",
+//       summary:
+//         "45-year-old male presenting with severe chest pain, elevated troponins, and ST elevation on ECG. Requires immediate cardiac catheterization and possible PCI.",
+//       allergies: "Penicillin",
+//       medications: "Aspirin 75mg, Atorvastatin 40mg",
+//       notes: "Patient is stable but requires urgent intervention. Family history of CAD.",
+//     },
+//     documents: [
+//       { name: "ECG_Report.pdf", type: "medical_report", size: "2.3 MB" },
+//       { name: "Lab_Results.pdf", type: "lab_result", size: "1.8 MB" },
+//       { name: "Chest_Xray.jpg", type: "xray", size: "4.2 MB" },
+//     ],
+//     createdAt: new Date("2024-01-15T10:30:00"),
+//     preferredDate: new Date("2024-01-15T14:00:00"),
+//     aiSummary:
+//       "Critical cardiac case requiring immediate intervention. Patient presents with classic STEMI symptoms and requires emergency cardiac catheterization within 90 minutes for optimal outcomes.",
+//   },
+//   {
+//     id: "REF-2024-001235",
+//     type: "general",
+//     status: "pending",
+//     urgency: "medium",
+//     patient: {
+//       name: "Jane Smith",
+//       id: "P-2024-002",
+//       phone: "+254-700-234-567",
+//       whatsapp: "+254-700-234-567",
+//       age: 32,
+//       gender: "female",
+//     },
+//     referring: {
+//       hospital: "Nairobi Hospital",
+//       doctor: "Dr. Michael Chen",
+//       department: "Internal Medicine",
+//     },
+//     medical: {
+//       condition: "Chronic headaches with neurological symptoms",
+//       department: "Neurology",
+//       summary:
+//         "32-year-old female with 3-month history of progressive headaches, visual disturbances, and occasional numbness in left arm. MRI shows possible space-occupying lesion.",
+//       allergies: "None known",
+//       medications: "Ibuprofen 400mg PRN",
+//       notes: "Patient anxious about symptoms. Requires neurological evaluation and possible advanced imaging.",
+//     },
+//     documents: [
+//       { name: "MRI_Brain.pdf", type: "medical_report", size: "8.5 MB" },
+//       { name: "Neurological_Exam.pdf", type: "medical_report", size: "1.2 MB" },
+//     ],
+//     createdAt: new Date("2024-01-15T09:15:00"),
+//     preferredDate: new Date("2024-01-16T10:00:00"),
+//     aiSummary:
+//       "Neurological case requiring specialist evaluation. Progressive symptoms with imaging findings suggest need for comprehensive neurological workup and possible neurosurgical consultation.",
+//   },
+//   {
+//     id: "REF-2024-001236",
+//     type: "specific",
+//     status: "accepted",
+//     urgency: "low",
+//     patient: {
+//       name: "Michael Johnson",
+//       id: "P-2024-003",
+//       phone: "+254-700-345-678",
+//       whatsapp: "+254-700-345-678",
+//       age: 28,
+//       gender: "male",
+//     },
+//     referring: {
+//       hospital: "Mater Hospital",
+//       doctor: "Dr. Emily Rodriguez",
+//       department: "Orthopedics",
+//     },
+//     medical: {
+//       condition: "Chronic knee pain following sports injury",
+//       department: "Orthopedics",
+//       summary:
+//         "28-year-old athlete with persistent knee pain 6 months post-injury. Conservative treatment failed. MRI shows meniscal tear requiring arthroscopic repair.",
+//       allergies: "None",
+//       medications: "Naproxen 500mg BD",
+//       notes: "Patient is motivated for surgery and rehabilitation. Good candidate for arthroscopic procedure.",
+//     },
+//     documents: [
+//       { name: "Knee_MRI.pdf", type: "medical_report", size: "6.1 MB" },
+//       { name: "Physical_Therapy_Notes.pdf", type: "medical_report", size: "0.8 MB" },
+//     ],
+//     createdAt: new Date("2024-01-14T16:45:00"),
+//     preferredDate: new Date("2024-01-18T08:00:00"),
+//     acceptedAt: new Date("2024-01-15T08:30:00"),
+//     aiSummary:
+//       "Elective orthopedic case for arthroscopic knee surgery. Well-documented case with clear surgical indication and good patient compliance expected.",
+//   },
+// ]
 
-export default function ReferralManagePage() {
-  const [selectedReferral, setSelectedReferral] = useState(null)
-  const [rejectionReason, setRejectionReason] = useState("")
+export default function ReferralManagePage({clerkId}) {
+  const [referrals, setReferrals] = useState(/** @type {Referral[]} */([]));
+  const [selectedReferral, setSelectedReferral] = useState(/** @type {Referral|null} */(null));
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(/** @type {(Error|PostgrestError|null)} */(null));
 
-  const handleAcceptReferral = (referralId) => {
-    console.log("[v0] Accepting referral:", referralId)
-    // In real app, this would call API to accept referral
-  }
+  const loadReferrals = useCallback(async () => {
+    if (!clerkId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const [specRes, genRes] = await Promise.allSettled([
+        getSpecificReferrals(clerkId),
+        getGeneralReferrals(clerkId),
+      ]);
 
-  const handleRejectReferral = (referralId, reason) => {
-    console.log("[v0] Rejecting referral:", referralId, "Reason:", reason)
-    // In real app, this would call API to reject referral
-  }
+      /** @type {Referral[]} */
+      const specific = specRes.status === "completed" ? (specRes.value ?? []) : [];
+      /** @type {Referral[]} */
+      const general  = genRes.status === "completed" ? (genRes.value ?? []) : [];
 
-  const handleCompleteReferral = (referralId) => {
-    console.log("[v0] Completing referral:", referralId)
-    // In real app, this would call API to mark referral as complete and update capacity
-  }
+      // merge, dedupe by id, newest first
+      const mergedMap = new Map();
+      [...specific, ...general].forEach(r => r && mergedMap.set(r.id, r));
+      const merged = Array.from(mergedMap.values()).sort(
+        (a, b) => new Date(b.created_at) - new Date(a.created_at)
+      );
+
+      setReferrals(merged);
+    } catch (e) {
+      setError(e instanceof Error ? e : new Error("Unknown error"));
+    } finally {
+      setLoading(false);
+    }
+  }, [clerkId]);
+
+  useEffect(() => {
+    loadReferrals();
+  }, [loadReferrals]);
+
+  // --- Actions ---------------------------------------------------------------
+
+  /** Approves referrals assigned to this clerk (server fn is bulk by clerkId) */
+  const handleAcceptReferral = async (referralId) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // ⚠️ ApproveReferrals(clerkId) approves ALL pending assigned to this clerk, not just referralId
+      await approveReferral(clerkId);
+
+      // refresh list
+      await loadReferrals();
+
+      // clear selection if it matches
+      setSelectedReferral(prev => (prev?.id === referralId ? null : prev));
+    } catch (e) {
+      setError(e instanceof Error ? e : new Error("Unknown error"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /** Rejects based on referral_type (also bulk by clerkId per your server fn) */
+  const handleRejectReferral = async (referralId, reason) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const ref = referrals.find(r => r.id === referralId);
+      if (!ref) throw new Error("Referral not found in list");
+
+      // Optional: stash reason somewhere (your API doesn't take it)
+      // You could patch 'additional_notes' here via a separate update if desired.
+
+      if (ref.referral_type === "specific") {
+        await rejectSpecificReferral(clerkId);
+      } else {
+        await rejectGeneralReferral(clerkId); // NOTE: your impl sets status back to "pending"
+      }
+
+      await loadReferrals();
+      setSelectedReferral(prev => (prev?.id === referralId ? null : prev));
+      setRejectionReason("");
+    } catch (e) {
+      setError(e instanceof Error ? e : new Error("Unknown error"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /** Completes referrals assigned to this clerk in "approved" state (bulk by clerkId) */
+  const handleCompleteReferral = async (referralId) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // ⚠️ completeReferral(clerkId) completes ALL approved assigned to this clerk
+      await completeReferral(clerkId);
+
+      await loadReferrals();
+      setSelectedReferral(prev => (prev?.id === referralId ? null : prev));
+    } catch (e) {
+      setError(e instanceof Error ? e : new Error("Unknown error"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- Render (minimal placeholder) -----------------------------------------
+  if (loading && referrals.length === 0) return <p>Loading…</p>;
+  if (error) return <p>Failed to load referrals.</p>;
 
   const getUrgencyColor = (urgency) => {
     switch (urgency) {
