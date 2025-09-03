@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import twilio from "twilio";
 
 export async function POST(req) {
-  const { to, name, dateStr, timeStr } = await req.json();
+  const { to, dateStr, timeStr } = await req.json();
 
   const client = twilio(
     process.env.TWILIO_ACCOUNT_SID,
@@ -13,7 +13,7 @@ export async function POST(req) {
     contentSid: "HXb5b62575e6e4ff6129ad7c8efe1f983e",
     contentVariables: JSON.stringify({ 1: dateStr, 2: timeStr }),
     from: `whatsapp:+14155238886`,
-    to: `whatsapp:${to}`, // e.g. "whatsapp:+27XXXXXXXXX"
+    to: `whatsapp:${to}`,
   });
 
   return NextResponse.json({ sid: msg.sid });
