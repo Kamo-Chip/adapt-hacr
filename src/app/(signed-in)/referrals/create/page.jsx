@@ -14,10 +14,11 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { User, Phone, FileText, Upload, CalendarIcon, Shield, Search, X, CheckCircle } from "lucide-react"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
-import { fetchHospitals, findOptimalHospital, validHospitalSelection } from "@/utils/db/client"
+import { createReferral, fetchHospitals, findOptimalHospital, validHospitalSelection ,saveDraft} from "@/utils/db/client"
 import { DEPARTMENTS } from "@/app/onboard/page"
 import Loading from "@/components/loading"
 import { useUser } from "@clerk/nextjs"
+import { createClient } from "@/utils/supabase/client";
 
 import toast from "react-hot-toast"
 
@@ -29,7 +30,7 @@ const urgencyLevels = [
 
 export default function CreateReferralPage() {
 
-  const {user} = useUser();
+  const { user } = useUser();
 
   const [date, setDate] = useState()
   const [documents, setDocuments] = useState([])
@@ -37,6 +38,7 @@ export default function CreateReferralPage() {
   const [referralType, setReferralType] = useState("general")
   const [loading, setLoading] = useState(true)
   const [hospitals, setHospitals] = useState([])
+  const [submitting, setSubmitting] = useState(false)
 
   const [formData, setFormData] = useState({
     patientName: "",
@@ -49,7 +51,7 @@ export default function CreateReferralPage() {
     reasonForReferral: "",
     clinicalSummary: "",
     currentTreatment: "",
-    medicalConsent:true,
+    medicalConsent: true,
     whatsappConsent: true,
     preferredDate: null,
     allergies: "",
@@ -57,6 +59,59 @@ export default function CreateReferralPage() {
   })
 
   const [errors, setErrors] = useState({})
+
+  const resetForm = () => {
+    setDate(null);
+    setDocuments([]);
+    setSelectedHospital("");
+    setReferralType("general");
+
+    setFormData({
+      patientName: "",
+      whatsappNumber: "",
+      gender: "",
+      emergencyContact: "",
+      medicalCondition: "",
+      department: "",
+      urgency: "",
+      reasonForReferral: "",
+      clinicalSummary: "",
+      currentTreatment: "",
+      medicalConsent: true,
+      whatsappConsent: true,
+      preferredDate: null,
+      allergies: "",
+      medications: "",
+    });
+
+    setErrors({});
+  };
+
+  useEffect(() => {
+    const loadDraft = async () => {
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from("draft_referrals")
+          .select("*")
+          .eq("user_id", user.id)
+          .eq("status", "draft")
+          .single();
+
+        if (data) {
+          setFormData(data.data);
+          setDocuments(data.documents || []);
+          setReferralType(data.referralType);
+        }
+      } catch (err) {
+        console.error("Error loading draft:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (user?.id) loadDraft();
+  }, [user]);
 
   useEffect(() => {
     const loadHospitals = async () => {
@@ -129,7 +184,11 @@ export default function CreateReferralPage() {
       return;
     }
 
+    setSubmitting(true); // Start loading
+
     try {
+      let chosenHospital = selectedHospital;
+
       if (referralType === "specific") {
         const result = await validHospitalSelection(selectedHospital, formData.department);
         if (!result.isValid) {
@@ -141,23 +200,49 @@ export default function CreateReferralPage() {
           return;
         }
       } else {
-        const hospitaldata = await findOptimalHospital(user.id, formData.department);
-        if (!hospitaldata.success) {
-          toast.error(hospitaldata.message);
+        const hospital = await findOptimalHospital(user.id, formData.department);
+        if (!hospital.success) {
+          toast.error(hospital.message);
           return;
-        } else {
-          toast.success(hospitaldata.message);
-
         }
+        chosenHospital = hospital.data;
       }
 
-      console.log("[v0] Submitting referral:", { formData, documents, selectedHospital, referralType });
+      const submissionData = { ...formData, preferredDate: date };
+
+      const supabase = createClient();
+      await supabase
+        .from("draft_referrals")
+        .delete()
+        .eq("user_id", user.id);
+
+      await createReferral(submissionData, documents, chosenHospital, referralType, user.id);
       toast.success("Referral submitted successfully!");
+      resetForm();
     } catch (err) {
       console.error(err);
-      toast.error(err.message || "Something went wrong");
+      toast.error(err?.message || err?.error?.message || "Something went wrong");
+    } finally {
+      setSubmitting(false);
     }
   };
+
+  const handleSaveDraft = async () => {
+    if (!user?.id) return toast.error("User not authenticated");
+
+    try {
+      setSubmitting(true);
+      const result = await saveDraft(formData, documents, referralType, user.id);
+      if (result.success) toast.success("Draft saved successfully!");
+      else toast.error("Failed to save draft");
+    } catch (err) {
+      console.error(err);
+      toast.error("Error saving draft");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
 
 
   const isFormValid = () => {
@@ -189,9 +274,26 @@ export default function CreateReferralPage() {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <Button variant="outline">Save Draft</Button>
-              <Button onClick={handleSubmit} disabled={!isFormValid()}>
-                Submit Referral
+              <Button variant="outline" onClick={handleSaveDraft} disabled={submitting}>
+                Save Draft
+              </Button>
+              <Button
+                size="lg"
+                onClick={handleSubmit}
+                disabled={!isFormValid() || submitting}
+                className="bg-medical-blue hover:bg-medical-blue/90"
+              >
+                {submitting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Submitting...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Submit Referral
+                  </>
+                )}
               </Button>
             </div>
           </div>
@@ -596,17 +698,27 @@ export default function CreateReferralPage() {
                 </p>
               </div>
               <div className="flex items-center gap-3">
-                <Button variant="outline" size="lg">
+                <Button variant="outline" onClick={handleSaveDraft} disabled={submitting}>
                   Save Draft
                 </Button>
+
                 <Button
                   size="lg"
                   onClick={handleSubmit}
-                  disabled={!isFormValid()}
+                  disabled={!isFormValid() || submitting}
                   className="bg-medical-blue hover:bg-medical-blue/90"
                 >
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  Submit Referral
+                  {submitting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Submitting...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      Submit Referral
+                    </>
+                  )}
                 </Button>
               </div>
             </div>

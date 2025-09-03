@@ -244,3 +244,104 @@ export const findOptimalHospital = async (clerk_id, department) => {
   }
 };
 
+export const createReferral = async (
+  formData,
+  documents,
+  selectedHospital,
+  referralType,
+  clerk_id
+) => {
+  const supabase = createClient();
+
+  const fromHospital = await userHospital(clerk_id); 
+
+  const doc_urls = [];
+  for (let index = 0; index < documents.length; index++) {
+    const doc_url = await uploadDoc(
+      documents[index],
+      "documents",
+      clerk_id,              
+      documents[index].name
+    );
+    doc_urls.push(doc_url);
+  }
+
+  const { error } = await supabase
+    .from("referrals")
+    .insert([
+      {
+        referral_type:referralType,
+        status: "pending",
+        from_hospital_id: fromHospital,
+        to_hospital_id: selectedHospital,
+        created_by_user_id: clerk_id,
+        department: formData.department,
+        urgency: formData.urgency,
+        condition_description: formData.medicalCondition,
+        known_allergies: formData.allergies,
+        current_medications: formData.medications,
+        preferred_referral_date: formData.preferredDate,
+        consent_medical_info: formData.medicalConsent,
+        consent_whatsapp: formData.whatsappConsent,
+        patient_name: formData.patientName,
+        patient_gender: formData.gender,
+        document_urls: doc_urls,
+      },
+    ])
+    .select();
+
+  if (error) {
+    console.error("Error creating referral:", error);
+    throw error;
+  }
+};
+
+
+export const uploadDoc = async (file, bucket, clerk_id, filename) => {
+  const supabase = createClient();
+
+  // Store in a per-user folder with unique name
+  const uniqueName = `${clerk_id}/${Date.now()}-${Math.random()
+    .toString(36)
+    .substring(2, 8)}-${filename}`;
+
+  const {  error :uploadError } = await supabase.storage
+    .from(bucket)
+    .upload(uniqueName, file);
+
+  if (uploadError) {
+    console.error("Error uploading image:", uploadError.message);
+    throw error;
+  }// Get public URL
+  const { data } = supabase.storage.from(bucket).getPublicUrl(uniqueName);
+
+  return data.publicUrl;
+};
+
+export const saveDraft = async (formData, documents, referral, userId) => {
+  const supabase = createClient();
+  try {
+    const submissionData = {
+      ...formData,
+      preferredDate: formData.preferredDate ? formData.preferredDate.toISOString() : null
+    };
+
+    const { data, error } = await supabase
+      .from("draft_referrals")
+      .upsert({
+        user_id: userId,
+        data: submissionData,
+        documents: documents.map(f => ({ name: f.name, size: f.size })),
+        referraltype: referral,
+        status: "draft",
+        last_updated: new Date()
+      })
+      .eq("user_id", userId); // ensures one draft per user
+
+    if (error) throw error;
+    return { success: true, data };
+  } catch (err) {
+    console.error("Error saving draft:", err);
+    return { success: false, error: err };
+  }
+};
