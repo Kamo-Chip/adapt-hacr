@@ -1,50 +1,45 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import Loading from "@/components/loading"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
-import { toast } from "sonner"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
     Dialog,
     DialogContent,
     DialogDescription,
     DialogHeader,
-    DialogTitle,
-    DialogTrigger,
+    DialogTitle
 } from "@/components/ui/dialog"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
-    FileText,
-    User,
-    Calendar,
-    Clock,
-    Phone,
-    AlertTriangle,
-    CheckCircle,
-    XCircle,
-    Eye,
-    Download,
-    MessageSquare,
-    Hospital,
-    MapPin,
-} from "lucide-react"
-import { format } from "date-fns"
-import {
-    getSpecificReferrals,
-    getGeneralReferrals,
+    approveReferral,
+    cancelReferral, // NOTE: currently sets status back to "pending" in your code
+    completeReferral,
     getApprovedReferrals,
+    getGeneralReferrals,
     getMyReferrals,
-    cancelReferral,
+    getSpecificReferrals, // NOTE: updates ALL pending referrals assigned to this clerk_id   // NOTE: updates ALL pending assigned to this clerk_id
+    rejectReferral,
     userHospitalId,
-    approveReferral,          // NOTE: updates ALL pending referrals assigned to this clerk_id   // NOTE: updates ALL pending assigned to this clerk_id
-    rejectReferral,    // NOTE: currently sets status back to "pending" in your code
-    completeReferral,          // NOTE: updates ALL approved assigned to this clerk_id
 } from "@/utils/db/client.js"
 import { useUser } from "@clerk/nextjs"
-import Loading from "@/components/loading"
+import { format } from "date-fns/format"
+import {
+    Calendar,
+    CheckCircle,
+    Clock,
+    Download,
+    FileText,
+    Hospital,
+    MapPin,
+    MessageSquare,
+    Phone,
+    User,
+    XCircle
+} from "lucide-react"
+import { useEffect, useState } from "react"
+import { toast } from "sonner"
 
 const getUrgencyColor = (urgency) => {
     switch (urgency) {
@@ -75,10 +70,10 @@ const getStatusColor = (status) => {
 }
 
 export default function ReferralManagePage() {
-    const [referrals, setReferrals] = useState(/** @type {Referral[]} */([]));
-    const [selectedReferral, setSelectedReferral] = useState(/** @type {Referral|null} */(null));
+    const [referrals, setReferrals] = useState([]);
+    const [selectedReferral, setSelectedReferral] = useState(null);
     const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(/** @type {(Error|PostgrestError|null)} */(null));
+    const [error, setError] = useState(null);
     const { user } = useUser();
     const [hospitalId, setHospitalId] = useState(null);
 
@@ -121,10 +116,23 @@ export default function ReferralManagePage() {
         try {
             const result = await approveReferral(id, user.id);
             toast.success("Referral accepted.");
+            await fetch(`/api/notify`, {
+                method: "POST",
+                body: JSON.stringify({
+                    to: result.patient_phone_number,
+                    name: result.patient_name,
+                    dateStr: result.preferred_date, 
+                    type: "confirmed",
+                }),
+                headers: {
+                    "Content-Type": "application/json",
+                },
+            });
             await loadReferrals();
         } catch (e) {
             setError(e instanceof Error ? e : new Error("Unknown error"));
             toast.error("Failed to accept referral: " + (e.message || "Unknown error"));
+            console.error("Error in onApprove:", e);
         } finally {
             setLoading(false);
         }
@@ -159,18 +167,19 @@ export default function ReferralManagePage() {
         console.log("Attempting to complete referral:", id, "by user:", user.id);
         try {
             const result = await completeReferral(id, user.id);
-            if(result) toast.success("Referral marked as complete.");
+            if (result) toast.success("Referral marked as complete.");
             else toast.error("Failed to complete referral: " + result.error?.message);
             await loadReferrals();
         } catch (e) {
             setError(e instanceof Error ? e : new Error("Unknown error"));
-            toast.error("Failed to complete referral: " + (e.message || "Unknown error"));  
+            toast.error("Failed to complete referral: " + (e.message || "Unknown error"));
+            console.error("Error in onComplete:", e);
         } finally {
             setLoading(false);
         }
     };
 
-     const onCancel = async (id) => {
+    const onCancel = async (id) => {
 
         if (!user?.id || !id) return toast.error("User not authenticated or no referral selected.");
         setLoading(true);
@@ -179,25 +188,25 @@ export default function ReferralManagePage() {
         console.log("Attempting to cancel referral:", id, "by user:", user.id);
         try {
             const result = await cancelReferral(id, user.id);
-            if(result) toast.success("Referral marked as cancelled.");
+            if (result) toast.success("Referral marked as cancelled.");
             else toast.error("Failed to cancel referral: " + result.error?.message);
             await loadReferrals();
         } catch (e) {
             setError(e instanceof Error ? e : new Error("Unknown error"));
-            toast.error("Failed to cancel referral: " + (e.message || "Unknown error"));  
+            toast.error("Failed to cancel referral: " + (e.message || "Unknown error"));
         } finally {
             setLoading(false);
         }
     };
 
     useEffect(() => {
-        const fetchHospital = async() => {
+        const fetchHospital = async () => {
             const id = await userHospitalId(user?.id);
             setHospitalId(id);
         };
-        if(user?.id) fetchHospital();
+        if (user?.id) fetchHospital();
     }, [user?.id]);
-    
+
     // --- Render (minimal placeholder) -----------------------------------------
 
     const specificReferrals = referrals.filter((r) => r.referral_type === "specific" && r.status === "pending" && r.to_hospital_id === hospitalId);
@@ -207,7 +216,6 @@ export default function ReferralManagePage() {
 
     useEffect(() => {
         if (!user) return;
-        console.log("Loading referrals for userId:", user.id);
         loadReferrals();
     }, [user]);
 
@@ -272,7 +280,7 @@ export default function ReferralManagePage() {
 
                         <div className="space-y-4">
                             {specificReferrals.map((referral) => (
-                                <ReferralCard key={referral.id} referral={referral} type="specific" onApprove={() => onApprove(referral.id)} onReject = {() => onReject(referral.id)} />
+                                <ReferralCard key={referral.id} referral={referral} type="specific" onApprove={() => onApprove(referral.id)} onReject={() => onReject(referral.id)} />
                             ))}
                             {specificReferrals.length === 0 && (
                                 <Card className="border-2 border-dashed">
@@ -326,7 +334,7 @@ export default function ReferralManagePage() {
 
                         <div className="space-y-4">
                             {myReferrals.map((referral) => (
-                                <ReferralCard key={referral.id} referral={referral} type="my_referrals" onCancel = {() => onCancel(referral.id)} />
+                                <ReferralCard key={referral.id} referral={referral} type="my_referrals" onCancel={() => onCancel(referral.id)} />
                             ))}
                             {myReferrals.length === 0 && (
                                 <Card className="border-2 border-dashed">
@@ -469,7 +477,7 @@ const ReferralCard = ({ referral, type, onApprove, onReject, onComplete, onCance
                 <div className="flex items-start justify-between">
                     <div className="space-y-2">
                         <div className="flex items-center gap-3">
-                            <h3 className="text-lg font-semibold">{referral.id}</h3>
+                            {/* <h3 className="text-lg font-semibold">{referral.id}</h3> */}
                             <Badge
                                 className={`bg-${getUrgencyColor(referral.urgency)}/10 text-${getUrgencyColor(referral.urgency)} border-${getUrgencyColor(referral.urgency)}/20`}
                             >
@@ -482,32 +490,32 @@ const ReferralCard = ({ referral, type, onApprove, onReject, onComplete, onCance
                             </Badge>
                         </div>
                         <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                            {/* <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-1">
                                 <Calendar className="w-4 h-4" />
-                                <span>{format(new Date(referral.createdAt), "MMM dd, yyyy 'at' HH:mm")}</span>
+                                <span>{format(new Date(referral.created_at), "MMM dd, yyyy 'at' HH:mm")}</span>
                             </div>
                             <div className="flex items-center gap-1">
                                 <Clock className="w-4 h-4" />
-                                <span>Preferred: {format(new Date(referral.preferredDate), "MMM dd, HH:mm")}</span>
-                            </div> */}
+                                <span>Preferred: {format(new Date(referral.preferred_referral_date), "dd MMM")}</span>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                {/* AI Summary
-          <Card className="bg-medical-blue/5 border-medical-blue/20">
-            <CardContent className="p-4">
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 bg-medical-blue/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <MessageSquare className="w-4 h-4 text-medical-blue" />
-                </div>
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-medical-blue">AI Summary</p>
-                  <p className="text-sm text-foreground">{referral.aiSummary}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card> */}
+                {/* AI Summary */}
+                <Card className="bg-medical-blue/5 border-medical-blue/20">
+                    <CardContent className="p-4">
+                        <div className="flex items-start gap-3">
+                            <div className="w-8 h-8 bg-medical-blue/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <MessageSquare className="w-4 h-4 text-medical-blue" />
+                            </div>
+                            <div className="space-y-1">
+                                <p className="text-sm font-medium text-medical-blue">AI Summary</p>
+                                <p className="text-sm text-foreground">{referral.ai_summary}</p>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
 
                 {/* Patient & Referring Info */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -518,13 +526,12 @@ const ReferralCard = ({ referral, type, onApprove, onReject, onComplete, onCance
                         </div>
                         <div className="space-y-1 text-sm">
                             <p>
-                                <span className="font-medium">{referral.patient_name}</span> ({referral.patient_age}y,{" "}
+                                <span className="font-medium">{referral.patient_name}</span> (
                                 {referral.patient_gender})
                             </p>
-                            {/* <p>ID: {referral.patient.id}</p> */}
                             <div className="flex items-center gap-1">
                                 <Phone className="w-3 h-3" />
-                                {/* <span>{referral.patient.phone}</span> */}
+                                <span>{referral.patient_phone_number}</span>
                             </div>
                         </div>
                     </div>
@@ -536,81 +543,78 @@ const ReferralCard = ({ referral, type, onApprove, onReject, onComplete, onCance
                         </div>
                         <div className="space-y-1 text-sm">
                             <p className="font-medium">{referral.from_hospital_id.name}</p>
-                            {/* <p>{referral.referring.doctor}</p> */}
-                            {/* <p className="text-muted-foreground">{referral.referring.department}</p> */}
                         </div>
                     </div>
                 </div>
 
-                {/* Medical Information */}
-                <div className="space-y-3">
-                    <div className="flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-muted-foreground" />
-                        <span className="font-medium">Medical Information</span>
-                    </div>
-                    <div className="space-y-2 text-sm">
-                        <div>
-                            <span className="font-medium">Condition: </span>
-                            <span>{referral.condition_description}</span>
-                        </div>
-                        <div>
-                            <span className="font-medium">Department: </span>
-                            <Badge variant="outline">{referral.department}</Badge>
-                        </div>
-                        <div>
-                            <span className="font-medium">Summary: </span>
-                            {/* <span>{referral.medical.summary}</span> */}
-                        </div>
-                        {/* {referral.medical.allergies && (
-                            <div className="flex items-center gap-2">
-                                <AlertTriangle className="w-4 h-4 text-urgent-red" />
-                                <span className="font-medium">Allergies: </span>
-                                <span className="text-urgent-red">{referral.medical.allergies}</span>
-                            </div>
-                        )} */}
-                    </div>
-                </div>
-
-                {/* Documents */}
-                {/* {referral.document_urls.length > 0 && (
+                <div className="grid grid-cols-2 gap-6">
+                    {/* Medical Information */}
                     <div className="space-y-3">
                         <div className="flex items-center gap-2">
                             <FileText className="w-4 h-4 text-muted-foreground" />
-                            <span className="font-medium">Medical Documents ({referral.document_urls.length})</span>
+                            <span className="font-medium">Medical Information</span>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                            {referral.document_urls.map((doc, index) => (
-                                <div key={index} className="flex items-center justify-between p-2 border rounded">
-                                    <div className="flex items-center gap-2">
-                                        <FileText className="w-4 h-4 text-muted-foreground" />
-                                        <div>
-                                            <p className="text-sm font-medium">{doc.name}</p>
-                                            <p className="text-xs text-muted-foreground">{doc.size}</p>
-                                        </div>
-                                    </div>
-                                    <Button variant="ghost" size="sm">
-                                        <Download className="w-4 h-4" />
-                                    </Button>
+                        <div className="space-y-2 text-sm">
+                            <div>
+                                <span className="font-medium">Condition: </span>
+                                <span>{referral.condition_description}</span>
+                            </div>
+                            <div>
+                                <span className="font-medium">Department: </span>
+                                <Badge variant="outline">{referral.department}</Badge>
+                            </div>
+                            {referral.known_allergies && (
+                                <div className="flex items-center gap-2">
+                                    <AlertTriangle className="w-4 h-4 text-urgent-red" />
+                                    <span className="font-medium">Allergies: </span>
+                                    <span className="text-urgent-red">{referral.known_allergies}</span>
                                 </div>
-                            ))}
+                            )}
                         </div>
                     </div>
-                )} */}
+
+                    {/* Documents */}
+                    {referral.document_urls.length > 0 && (
+                        <div className="space-y-3">
+                            <div className="flex items-center gap-2">
+                                <FileText className="w-4 h-4 text-muted-foreground" />
+                                <span className="font-medium">Medical Documents ({referral.document_urls.length})</span>
+                            </div>
+                            <div className="grid grid-cols-1 gap-2">
+                                {referral.document_urls.map((doc, index) => (
+                                    <div key={index} className="flex items-center justify-between p-2 border rounded w-full">
+                                        <div className="flex items-center gap-2">
+                                            <FileText className="w-4 h-4 text-muted-foreground" />
+                                            <div>
+                                                <p className="text-sm font-medium">{`File ${index + 1}`}</p>
+                                                <p className="text-xs text-muted-foreground">{doc.size}</p>
+                                            </div>
+                                        </div>
+                                        <Button asChild>
+                                            <a href={doc} target="_blank" rel="noopener noreferrer" download>
+                                                <Download className="w-5 h-5" />
+                                            </a>
+                                        </Button>
+
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+
 
                 {/* Actions */}
                 <div className="flex items-center justify-between pt-4 border-t">
-                    <Button variant="outline" onClick={() => setSelectedReferral(referral)}>
-                        <Eye className="w-4 h-4 mr-2" />
-                        View Details
-                    </Button>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 ml-auto">
                         {(type === "specific" || type === "general") && referral.status === "pending" && (
                             <>
                                 <Button variant="destructive" onClick={onReject} >
                                     Reject Referral
                                 </Button>
-                            
+
                                 <Button
                                     onClick={onApprove}
                                     className="bg-trust-green hover:bg-trust-green/90 text-trust-green-foreground"
@@ -621,8 +625,8 @@ const ReferralCard = ({ referral, type, onApprove, onReject, onComplete, onCance
                             </>
                         )}
 
-                        { type === "my_referrals" && referral.status === "pending" && (
-                           <Button
+                        {type === "my_referrals" && referral.status === "pending" && (
+                            <Button
                                 onClick={onCancel}
                                 className="bg-orange-500 hover:bg-orange-600 text-white"
                             >
@@ -644,4 +648,4 @@ const ReferralCard = ({ referral, type, onApprove, onReject, onComplete, onCance
                 </div>
             </div>
         </CardContent>
-    </Card>);
+    </Card >);
