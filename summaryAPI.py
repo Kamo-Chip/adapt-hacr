@@ -7,11 +7,11 @@ app = FastAPI()
 
 OLLAMA_API = "https://1f51630e54e1.ngrok-free.app "
 
-#class QueryRequest(BaseModel):
- #   prompt: str
+class QueryRequest(BaseModel):
+    prompt: str
 
 @app.post("/query")
-def query(prompt: str):
+def query(request: QueryRequest):
     # Call your remote Ollama instance via ngrok
     response = requests.post(
         f"{OLLAMA_API}/api/chat",
