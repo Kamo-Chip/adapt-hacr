@@ -115,6 +115,7 @@ export default function ReferralManagePage() {
 
         try {
             const result = await approveReferral(id, user.id);
+            console.log("Referral approved:", result);
             toast.success("Referral accepted.");
             await fetch(`/api/notify`, {
                 method: "POST",

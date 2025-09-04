@@ -488,13 +488,13 @@ export async function completeReferral(referralId) {
     .eq("id", referralId)
     .select("*");
 
-    const { data: capacityData, error: capacityError } = await supabase.rpc(
-      "increment_hospital_capacity",
-      {
-        hospital_id: data[0].to_hospital_id,
-        department: data[0].department,
-      }
-    );
+  const { data: capacityData, error: capacityError } = await supabase.rpc(
+    "increment_hospital_capacity",
+    {
+      p_hospital_id: data[0].to_hospital_id,
+      p_department: data[0].department,
+    }
+  );
 
   if (error || capacityError) throw error || capacityError;
   return data;
