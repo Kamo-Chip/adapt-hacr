@@ -29,9 +29,9 @@ import {
 import toast from "react-hot-toast"
 
 const urgencyLevels = [
-    { value: "high", label: "High Priority", color: "urgent-red", description: "Immediate attention required" },
-    { value: "medium", label: "Medium Priority", color: "warning-amber", description: "Urgent but not critical" },
-    { value: "low", label: "Low Priority", color: "trust-green", description: "Routine referral" },
+    { value: "high", label: "High Priority", color: "red-500", description: "Immediate attention required" },
+    { value: "medium", label: "Medium Priority", color: "amber-500", description: "Urgent but not critical" },
+    { value: "low", label: "Low Priority", color: "green-500", description: "Routine referral" },
 ]
 
 export default function CreateReferralPage() {
@@ -50,7 +50,6 @@ export default function CreateReferralPage() {
         patientName: "",
         whatsappNumber: "",
         gender: "",
-        emergencyContact: "",
         medicalCondition: "",
         department: "",
         urgency: "",
@@ -120,9 +119,12 @@ export default function CreateReferralPage() {
     }, [user]);
 
     useEffect(() => {
+        if (!user?.id) return;
+
         const loadHospitals = async () => {
             try {
                 const data = await fetchHospitals(user.id)
+                console.log(data)
                 setHospitals(data)
             } catch (err) {
                 console.log(err.message)
@@ -329,7 +331,7 @@ export default function CreateReferralPage() {
                             <CardDescription>Basic patient details and contact information</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-6">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="grid grid-cols-1 gap-6">
                                 <div className="space-y-2">
                                     <Label htmlFor="patientName">Patient Full Name *</Label>
                                     <div className="relative">
@@ -354,8 +356,13 @@ export default function CreateReferralPage() {
                                         )}
                                     </div>
                                 </div>
+
+                            </div>
+
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
-                                    <Label htmlFor="whatsappNumber">WhatsApp Number *</Label>
+                                    <Label htmlFor="whatsappNumber">Phone number *</Label>
                                     <div className="relative flex">
                                         <div className="flex items-center px-3 border border-r-0 rounded-l-md bg-muted">
                                             <Phone className="w-4 h-4 text-trust-green" />
@@ -366,7 +373,7 @@ export default function CreateReferralPage() {
                                             onChange={(e) => handlePhoneChange("whatsappNumber", e)}
                                             placeholder="+27607001234"
                                             className={cn(
-                                                "rounded-l-none transition-all duration-200 focus:outline-none focus:ring-4 flex-1",
+                                                "rounded-l-none transition-all duration-200 focus:outline-none focus:ring-4 w-fit",
                                                 errors.whatsappNumber
                                                     ? "border-red-500 focus:ring-red-400"
                                                     : "border-gray-300 focus:ring-medical-blue"
@@ -384,15 +391,11 @@ export default function CreateReferralPage() {
                                         )}
                                     </div>
                                 </div>
-                            </div>
-
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
-                                    <Label htmlFor="gender">Gender</Label>
+                                    <Label htmlFor="gender">Sex</Label>
                                     <Select value={formData.gender} onValueChange={(value) => handleInputChangeValidated("gender", value)}>
                                         <SelectTrigger>
-                                            <SelectValue placeholder="Select gender" />
+                                            <SelectValue placeholder="Select sex" />
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="male">Male</SelectItem>
@@ -400,15 +403,6 @@ export default function CreateReferralPage() {
                                             <SelectItem value="other">Other</SelectItem>
                                         </SelectContent>
                                     </Select>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="emergencyContact">Emergency Contact</Label>
-                                    <Input
-                                        id="emergencyContact"
-                                        value={formData.emergencyContact}
-                                        onChange={(e) => handleInputChangeValidated("emergencyContact", e)}
-                                        placeholder="Contact name"
-                                    />
                                 </div>
                             </div>
                         </CardContent>
@@ -464,7 +458,7 @@ export default function CreateReferralPage() {
                                                 {urgencyLevels.map((level) => (
                                                     <SelectItem key={level.value} value={level.value}>
                                                         <div className="flex items-center gap-2">
-                                                            <div className={`w-2 h-2 rounded-full bg-${level.color}`} />
+                                                            <div className={cn(`w-2 h-2 rounded-full bg-${level.color}`)} />
                                                             <span>{level.label}</span>
                                                         </div>
                                                     </SelectItem>

@@ -115,7 +115,6 @@ export default function OnboardPage() {
     const [facilityData, setFacilityData] = useState({
         name: "",
         type: "",
-        whatsapp_number: "",
         address_line1: "",
         city: "",
         province: "",
@@ -365,17 +364,6 @@ export default function OnboardPage() {
                                     placeholder="e.g., Nairobi Hospital"
                                 />
                             </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="whatsapp_number">WhatsApp Number</Label>
-
-                                <Input
-                                    id="whatsapp_number"
-                                    type="tel"
-                                    value={`${facilityData.whatsapp_number}`}
-                                    onChange={(e) => handleInputChange("whatsapp_number", e.target.value, true)}
-                                    placeholder="e.g., +27724802453"
-                                />
-                            </div>
                             <div className="grid md:grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label htmlFor="facilityType">Facility Type</Label>
@@ -440,6 +428,7 @@ export default function OnboardPage() {
                                                     <Input type="number" placeholder="Capacity" className="w-24" min={0} value={dept.capacity_total} onChange={(e) => {
                                                         const updatedDepartmentData = [...departmentData];
                                                         updatedDepartmentData[index].capacity_total = Number(e.target.value);
+                                                        updatedDepartmentData[index].capacity_available = Number(e.target.value);
                                                         setDepartmentData(updatedDepartmentData);
                                                     }} />
                                                     <Button variant={"ghost"} size={"icon"} onClick={() => {
