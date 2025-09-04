@@ -1,17 +1,38 @@
 from fastapi import FastAPI
-import ollama
+from pydantic import BaseModel
+import requests
 import re
 
 app = FastAPI()
 
-#Define an endpoint - a URL on the internet that we can access
+OLLAMA_API = "https://1f51630e54e1.ngrok-free.app "
+
+class QueryRequest(BaseModel):
+    prompt: str
+
 @app.post("/query")
-def query(prompt: str):
-    response = ollama.chat(model="qwen3:8b", messages=[{"role":"user", "content":"/no_think Summarise this : {} /no_think".format(prompt)}])
-    raw_text = response["message"]["content"]
-    
+def query(request: QueryRequest):
+    # Call your remote Ollama instance via ngrok
+    response = requests.post(
+        f"{OLLAMA_API}/api/chat",
+        json={
+            "model": "qwen3:8b",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": f"/no_think Summarise this : {request.prompt} /no_think"
+                }
+            ]
+        },
+        timeout=60
+    )
+
+    response.raise_for_status()
+    data = response.json()
+
+    raw_text = data["message"]["content"]
+
     # Remove <think>...</think> (including newlines)
     clean_text = re.sub(r"<think>.*?</think>", "", raw_text, flags=re.DOTALL).strip()
-    
-    return {"response": clean_text}
 
+    return {"response": clean_text}
