@@ -79,9 +79,9 @@ export const fetchHospitals = async (clerk_id) => {
   const hospital_id = await userHospital(clerk_id);
 
   const { data, error } = await supabase
-  .from("hospitals")
-  .select("id,name")
-  .neq('id',hospital_id);
+    .from("hospitals")
+    .select("id,name")
+    .neq("id", hospital_id);
 
   if (error) {
     console.error("Error fetching hospitals:", error);
@@ -91,7 +91,7 @@ export const fetchHospitals = async (clerk_id) => {
   return data;
 };
 
-const userHospital = async (clerk_id) => {
+export const userHospital = async (clerk_id) => {
   const supabase = createClient();
 
   const { data, error } = await supabase
@@ -176,7 +176,10 @@ export const findOptimalHospital = async (clerk_id, department) => {
       .single();
 
     if (hospitalError || !hospitalData) {
-      return { success: false, message: `Failed to fetch reference hospital for ID ${hospital_id}` };
+      return {
+        success: false,
+        message: `Failed to fetch reference hospital for ID ${hospital_id}`,
+      };
     }
 
     const { latitude: refLat, longitude: refLon } = hospitalData;
@@ -184,12 +187,14 @@ export const findOptimalHospital = async (clerk_id, department) => {
     // 2. Fetch hospitals with required department and available capacity
     const { data: availableHospitals, error: capacityError } = await supabase
       .from("hospital_capacity")
-      .select(`
+      .select(
+        `
         hospital_id,
         capacity_available,
         capacity_total,
         hospitals!inner(id, name, latitude, longitude, type)
-      `)
+      `
+      )
       .gt("capacity_available", 0)
       .eq("department", department)
       .neq("hospital_id", hospital_id);
@@ -199,13 +204,22 @@ export const findOptimalHospital = async (clerk_id, department) => {
     }
 
     if (!availableHospitals || availableHospitals.length === 0) {
-      return { success: false, message: "No available hospitals found with the required department and capacity" };
+      return {
+        success: false,
+        message:
+          "No available hospitals found with the required department and capacity",
+      };
     }
 
     // 3. Compute distance and metrics
     const hospitalsWithMetrics = availableHospitals.map((row) => {
       const hosp = row.hospitals;
-      const distance = getDistanceKm(refLat, refLon, hosp.latitude, hosp.longitude);
+      const distance = getDistanceKm(
+        refLat,
+        refLon,
+        hosp.latitude,
+        hosp.longitude
+      );
       const loadFactor = row.capacity_total
         ? 1 - row.capacity_available / row.capacity_total
         : 0.5;
@@ -238,9 +252,16 @@ export const findOptimalHospital = async (clerk_id, department) => {
       return { success: false, message: "No suitable hospital found" };
     }
 
-    return { success: true, message: "Optimal hospital found", data: bestHospitalId };
+    return {
+      success: true,
+      message: "Optimal hospital found",
+      data: bestHospitalId,
+    };
   } catch (err) {
-    return { success: false, message: `findOptimalHospital failed: ${err.message}` };
+    return {
+      success: false,
+      message: `findOptimalHospital failed: ${err.message}`,
+    };
   }
 };
 
@@ -253,14 +274,14 @@ export const createReferral = async (
 ) => {
   const supabase = createClient();
 
-  const fromHospital = await userHospital(clerk_id); 
+  const fromHospital = await userHospital(clerk_id);
 
   const doc_urls = [];
   for (let index = 0; index < documents.length; index++) {
     const doc_url = await uploadDoc(
       documents[index],
       "documents",
-      clerk_id,              
+      clerk_id,
       documents[index].name
     );
     doc_urls.push(doc_url);
@@ -270,7 +291,7 @@ export const createReferral = async (
     .from("referrals")
     .insert([
       {
-        referral_type:referralType,
+        referral_type: referralType,
         status: "pending",
         from_hospital_id: fromHospital,
         to_hospital_id: selectedHospital,
@@ -296,7 +317,6 @@ export const createReferral = async (
   }
 };
 
-
 export const uploadDoc = async (file, bucket, clerk_id, filename) => {
   const supabase = createClient();
 
@@ -305,14 +325,14 @@ export const uploadDoc = async (file, bucket, clerk_id, filename) => {
     .toString(36)
     .substring(2, 8)}-${filename}`;
 
-  const {  error :uploadError } = await supabase.storage
+  const { error: uploadError } = await supabase.storage
     .from(bucket)
     .upload(uniqueName, file);
 
   if (uploadError) {
     console.error("Error uploading image:", uploadError.message);
     throw error;
-  }// Get public URL
+  } // Get public URL
   const { data } = supabase.storage.from(bucket).getPublicUrl(uniqueName);
 
   return data.publicUrl;
@@ -323,7 +343,9 @@ export const saveDraft = async (formData, documents, referral, userId) => {
   try {
     const submissionData = {
       ...formData,
-      preferredDate: formData.preferredDate ? formData.preferredDate.toISOString() : null
+      preferredDate: formData.preferredDate
+        ? formData.preferredDate.toISOString()
+        : null,
     };
 
     const { data, error } = await supabase
@@ -331,10 +353,10 @@ export const saveDraft = async (formData, documents, referral, userId) => {
       .upsert({
         user_id: userId,
         data: submissionData,
-        documents: documents.map(f => ({ name: f.name, size: f.size })),
+        documents: documents.map((f) => ({ name: f.name, size: f.size })),
         referraltype: referral,
         status: "draft",
-        last_updated: new Date()
+        last_updated: new Date(),
       })
       .eq("user_id", userId); // ensures one draft per user
 
@@ -345,3 +367,147 @@ export const saveDraft = async (formData, documents, referral, userId) => {
     return { success: false, error: err };
   }
 };
+
+export const fetchProfile = async (clerk_id) => {
+  const supabase = createClient();
+
+  // 1. Find hospital_id from users table
+  const { data: userRow, error: userError } = await supabase
+    .from("users")
+    .select("hospital_id")
+    .eq("clerk_id", clerk_id)
+    .maybeSingle();
+
+  if (userError) {
+    console.error("Error fetching hospital ID:", userError);
+    throw userError;
+  }
+
+  const hospital_id = userRow?.hospital_id;
+
+  if (!hospital_id) {
+    return {}; // user exists but no hospital linked
+  }
+
+  // 2. Fetch hospital row
+  const { data: hospital, error: hospitalError } = await supabase
+    .from("hospitals")
+    .select("*")
+    .eq("id", hospital_id)
+    .single();
+
+  if (hospitalError) {
+    console.error("Error fetching hospital:", hospitalError);
+    throw hospitalError;
+  }
+
+  return hospital;
+};
+
+export const fetchDepartments = async (h_id) => {
+  const supabase = createClient();
+
+  const { data, error } = await supabase
+    .from("hospital_capacity")
+    .select("*")
+    .eq("hospital_id", h_id);
+
+  if (error) {
+    console.error("Error fetching hospital ID:", error);
+    throw error;
+  }
+
+  return data;
+};
+
+export const updateHospital = async (formData) => {
+  const supabase = createClient();
+
+  const { error } = await supabase
+    .from("referrals")
+    .upsert([
+      {
+        name: formData.name,
+        type: formData.type,
+        address_line1: formData.address_line1,
+        city: formData.city,
+        province: formData.province,
+        postal_code: formData.postal_code,
+        country: formData.country,
+        email: formData.email,
+        whatsapp_number: formData.whatsapp_number,
+        website: formData.website,
+        updated_at: new Date(Date.now),
+      },
+    ])
+    .select();
+
+  if (error) {
+    console.error("Error creating referral:", error);
+    throw error;
+  }
+};
+
+export const isAdmin = async (c_id) => {
+  const supabase = createClient();
+
+  const { data, error } = await supabase
+    .from("users")
+    .select("role")
+    .eq("clerk_id", c_id)
+    .maybeSingle();
+
+  if(error){
+    console.error("Error creating referral:", error);
+    throw error;
+  }
+
+  return data?.role === "administrator"
+};
+
+export const addDepartmentToDB = async (department) => {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('hospital_capacity')
+    .insert([department])
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Error adding department:", error);
+    throw error;
+  }
+
+  return data;
+};
+
+export const updateDepartmentInDB = async (id, updates) => {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('hospital_capacity')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Error updating department:", error);
+    throw error;
+  }
+
+  return data;
+};
+
+export const removeDepartmentFromDB = async (id) => {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from('hospital_capacity')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error("Error removing department:", error);
+    throw error;
+  }
+};
+
