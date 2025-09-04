@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { toast } from "sonner"
 import {
     Dialog,
     DialogContent,
@@ -34,6 +35,10 @@ import { format } from "date-fns"
 import {
     getSpecificReferrals,
     getGeneralReferrals,
+    getApprovedReferrals,
+    getMyReferrals,
+    cancelReferral,
+    userHospitalId,
     approveReferral,          // NOTE: updates ALL pending referrals assigned to this clerk_id   // NOTE: updates ALL pending assigned to this clerk_id
     rejectReferral,    // NOTE: currently sets status back to "pending" in your code
     completeReferral,          // NOTE: updates ALL approved assigned to this clerk_id
@@ -58,7 +63,7 @@ const getStatusColor = (status) => {
     switch (status) {
         case "pending":
             return "warning-amber"
-        case "accepted":
+        case "approved":
             return "trust-green"
         case "rejected":
             return "urgent-red"
@@ -72,22 +77,24 @@ const getStatusColor = (status) => {
 export default function ReferralManagePage() {
     const [referrals, setReferrals] = useState(/** @type {Referral[]} */([]));
     const [selectedReferral, setSelectedReferral] = useState(/** @type {Referral|null} */(null));
-    const [rejectionReason, setRejectionReason] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(/** @type {(Error|PostgrestError|null)} */(null));
     const { user } = useUser();
+    const [hospitalId, setHospitalId] = useState(null);
 
     const loadReferrals = async () => {
         setLoading(true);
         setError(null);
         try {
-            const [specRes, genRes] = await Promise.allSettled([
+            const [specRes, genRes, myRes, manRes] = await Promise.allSettled([
                 getSpecificReferrals(user.id),
                 getGeneralReferrals(user.id),
+                getMyReferrals(user.id),
+                getApprovedReferrals(user.id),
             ]);
 
             const mergedMap = new Map();
-            [...(specRes?.value ?? []), ...(genRes?.value ?? [])].forEach(r => r && mergedMap.set(r.id, r));
+            [...(specRes?.value ?? []), ...(genRes?.value ?? []), ...(myRes?.value ?? []), ...(manRes?.value ?? [])].forEach(r => r && mergedMap.set(r.id, r));
             const merged = Array.from(mergedMap.values()).sort(
                 (a, b) => new Date(b.created_at) - new Date(a.created_at)
             );
@@ -105,53 +112,98 @@ export default function ReferralManagePage() {
 
     /** Approves referrals assigned to this clerk (server fn is bulk by clerkId) */
     const onApprove = async (id) => {
+
+        console.log("[onApprove] Called with id:", id);
+        if (!user?.id || !id) return toast.error("User not authenticated or no referral selected.");
         setLoading(true);
         setError(null);
 
         try {
-            await approveReferral(id, user.id);
+            const result = await approveReferral(id, user.id);
+            toast.success("Referral accepted.");
             await loadReferrals();
         } catch (e) {
             setError(e instanceof Error ? e : new Error("Unknown error"));
+            toast.error("Failed to accept referral: " + (e.message || "Unknown error"));
         } finally {
             setLoading(false);
         }
     };
 
     const onReject = async (id) => {
+
+        if (!user?.id || !id) return toast.error("User not authenticated or no referral selected.");
+
         setLoading(true);
         setError(null);
 
+        console.log("Attempting to reject referral:", id, "by user:", user.id);
         try {
-            await rejectReferral(id, user.id);
+            const result = await rejectReferral(id, user.id);
+            toast.success("Referral rejected.");
             await loadReferrals();
         } catch (e) {
             setError(e instanceof Error ? e : new Error("Unknown error"));
+            toast.error("Failed to reject referral: " + (e.message || "Unknown error"));
         } finally {
             setLoading(false);
         }
     };
 
     const onComplete = async (id) => {
+
+        if (!user?.id || !id) return toast.error("User not authenticated or no referral selected.");
         setLoading(true);
         setError(null);
+
+        console.log("Attempting to complete referral:", id, "by user:", user.id);
         try {
-            await completeReferral(id, user.id);
+            const result = await completeReferral(id, user.id);
+            if(result) toast.success("Referral marked as complete.");
+            else toast.error("Failed to complete referral: " + result.error?.message);
             await loadReferrals();
         } catch (e) {
             setError(e instanceof Error ? e : new Error("Unknown error"));
+            toast.error("Failed to complete referral: " + (e.message || "Unknown error"));  
         } finally {
             setLoading(false);
         }
     };
 
+     const onCancel = async (id) => {
+
+        if (!user?.id || !id) return toast.error("User not authenticated or no referral selected.");
+        setLoading(true);
+        setError(null);
+
+        console.log("Attempting to cancel referral:", id, "by user:", user.id);
+        try {
+            const result = await cancelReferral(id, user.id);
+            if(result) toast.success("Referral marked as cancelled.");
+            else toast.error("Failed to cancel referral: " + result.error?.message);
+            await loadReferrals();
+        } catch (e) {
+            setError(e instanceof Error ? e : new Error("Unknown error"));
+            toast.error("Failed to cancel referral: " + (e.message || "Unknown error"));  
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        const fetchHospital = async() => {
+            const id = await userHospitalId(user?.id);
+            setHospitalId(id);
+        };
+        if(user?.id) fetchHospital();
+    }, [user?.id]);
+    
     // --- Render (minimal placeholder) -----------------------------------------
 
-
-
-
-    const specificReferrals = referrals.filter((r) => r.type === "specific")
-    const generalReferrals = referrals.filter((r) => r.type === "general")
+    const specificReferrals = referrals.filter((r) => r.referral_type === "specific" && r.status === "pending" && r.to_hospital_id === hospitalId);
+    const generalReferrals = referrals.filter((r) => r.referral_type === "general" && r.status === "pending" && r.to_hospital_id === hospitalId);
+    const myReferrals = referrals.filter((r) => r.created_by_user_id === user?.id);
+    const manageReferrals = referrals.filter((r) => r.status === "approved" && r.to_hospital_id === hospitalId);
 
     useEffect(() => {
         if (!user) return;
@@ -182,7 +234,7 @@ export default function ReferralManagePage() {
                                 {referrals.filter((r) => r.status === "pending").length} Pending
                             </Badge>
                             <Badge variant="outline" className="text-sm">
-                                {referrals.filter((r) => r.status === "accepted").length} Accepted
+                                {referrals.filter((r) => r.status === "approved").length} Accepted
                             </Badge>
                         </div>
                     </div>
@@ -191,7 +243,7 @@ export default function ReferralManagePage() {
 
             <div className="container mx-auto px-4 py-8">
                 <Tabs defaultValue="specific" className="space-y-6">
-                    <TabsList className="grid w-full grid-cols-2">
+                    <TabsList className="grid w-full grid-cols-4">
                         <TabsTrigger value="specific" className="flex items-center gap-2">
                             <MapPin className="w-4 h-4" />
                             Specific Referrals ({specificReferrals.length})
@@ -199,6 +251,14 @@ export default function ReferralManagePage() {
                         <TabsTrigger value="general" className="flex items-center gap-2">
                             <Hospital className="w-4 h-4" />
                             General Referrals ({generalReferrals.length})
+                        </TabsTrigger>
+                        <TabsTrigger value="my_referrals" className="flex items-center gap-2">
+                            <Hospital className="w-4 h-4" />
+                            Manage My Referrals ({myReferrals.length})
+                        </TabsTrigger>
+                        <TabsTrigger value="manage_referrals" className="flex items-center gap-2">
+                            <Hospital className="w-4 h-4" />
+                            Manage Approved Referrals ({manageReferrals.length})
                         </TabsTrigger>
                     </TabsList>
 
@@ -211,8 +271,8 @@ export default function ReferralManagePage() {
                         </Card>
 
                         <div className="space-y-4">
-                            {referrals.map((referral) => (
-                                <ReferralCard key={referral.id} referral={referral} />
+                            {specificReferrals.map((referral) => (
+                                <ReferralCard key={referral.id} referral={referral} type="specific" onApprove={() => onApprove(referral.id)} onReject = {() => onReject(referral.id)} />
                             ))}
                             {specificReferrals.length === 0 && (
                                 <Card className="border-2 border-dashed">
@@ -240,7 +300,7 @@ export default function ReferralManagePage() {
 
                         <div className="space-y-4">
                             {generalReferrals.map((referral) => (
-                                <ReferralCard key={referral.id} referral={referral} />
+                                <ReferralCard key={referral.id} referral={referral} type="general" onApprove={() => onApprove(referral.id)} onReject={() => onReject(referral.id)} />
                             ))}
                             {generalReferrals.length === 0 && (
                                 <Card className="border-2 border-dashed">
@@ -249,6 +309,58 @@ export default function ReferralManagePage() {
                                         <h3 className="text-lg font-semibold mb-2">No general referrals</h3>
                                         <p className="text-muted-foreground">
                                             No referrals have been automatically matched to your hospital at the moment.
+                                        </p>
+                                    </CardContent>
+                                </Card>
+                            )}
+                        </div>
+                    </TabsContent>
+
+                    <TabsContent value="my_referrals" className="space-y-6">
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Manage My Referrals</CardTitle>
+                                <CardDescription>See Progress on referrals you sent out to other hospitals</CardDescription>
+                            </CardHeader>
+                        </Card>
+
+                        <div className="space-y-4">
+                            {myReferrals.map((referral) => (
+                                <ReferralCard key={referral.id} referral={referral} type="my_referrals" onCancel = {() => onCancel(referral.id)} />
+                            ))}
+                            {myReferrals.length === 0 && (
+                                <Card className="border-2 border-dashed">
+                                    <CardContent className="p-12 text-center">
+                                        <MapPin className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                                        <h3 className="text-lg font-semibold mb-2">No referrals sent</h3>
+                                        <p className="text-muted-foreground">
+                                            {"You don't have any referrals specifically requesting your hospital at the moment."}
+                                        </p>
+                                    </CardContent>
+                                </Card>
+                            )}
+                        </div>
+                    </TabsContent>
+
+                    <TabsContent value="manage_referrals" className="space-y-6">
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Manage Referrals</CardTitle>
+                                <CardDescription>Manage the referrals you have accepted</CardDescription>
+                            </CardHeader>
+                        </Card>
+
+                        <div className="space-y-4">
+                            {manageReferrals.map((referral) => (
+                                <ReferralCard key={referral.id} referral={referral} type="manage_referrals" onComplete={() => onComplete(referral.id)} />
+                            ))}
+                            {manageReferrals.length === 0 && (
+                                <Card className="border-2 border-dashed">
+                                    <CardContent className="p-12 text-center">
+                                        <MapPin className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                                        <h3 className="text-lg font-semibold mb-2">No referrals accepted yet.</h3>
+                                        <p className="text-muted-foreground">
+                                            {"You don't have any referrals specifically requesting your hospital at the moment."}
                                         </p>
                                     </CardContent>
                                 </Card>
@@ -348,8 +460,7 @@ export default function ReferralManagePage() {
 }
 
 
-const ReferralCard = ({ referral }) => (
-
+const ReferralCard = ({ referral, type, onApprove, onReject, onComplete, onCancel }) => (
 
     <Card className="border-2 hover:border-medical-blue/20 transition-colors">
         <CardContent className="p-6">
@@ -424,7 +535,7 @@ const ReferralCard = ({ referral }) => (
                             <span className="font-medium">Referring Hospital</span>
                         </div>
                         <div className="space-y-1 text-sm">
-                            <p className="font-medium">{referral.from_hospital_id}</p>
+                            <p className="font-medium">{referral.from_hospital_id.name}</p>
                             {/* <p>{referral.referring.doctor}</p> */}
                             {/* <p className="text-muted-foreground">{referral.referring.department}</p> */}
                         </div>
@@ -461,7 +572,7 @@ const ReferralCard = ({ referral }) => (
                 </div>
 
                 {/* Documents */}
-                {referral.document_urls.length > 0 && (
+                {/* {referral.document_urls.length > 0 && (
                     <div className="space-y-3">
                         <div className="flex items-center gap-2">
                             <FileText className="w-4 h-4 text-muted-foreground" />
@@ -484,7 +595,7 @@ const ReferralCard = ({ referral }) => (
                             ))}
                         </div>
                     </div>
-                )}
+                )} */}
 
                 {/* Actions */}
                 <div className="flex items-center justify-between pt-4 border-t">
@@ -494,53 +605,14 @@ const ReferralCard = ({ referral }) => (
                     </Button>
 
                     <div className="flex items-center gap-2">
-                        {referral.status === "pending" && (
+                        {(type === "specific" || type === "general") && referral.status === "pending" && (
                             <>
-                                <Dialog>
-                                    <DialogTrigger asChild>
-                                        <Button variant="outline" className="text-destructive hover:text-destructive bg-transparent">
-                                            <XCircle className="w-4 h-4 mr-2" />
-                                            Reject
-                                        </Button>
-                                    </DialogTrigger>
-                                    <DialogContent>
-                                        <DialogHeader>
-                                            <DialogTitle>Reject Referral</DialogTitle>
-                                            <DialogDescription>
-                                                Please provide a reason for rejecting this referral. This will be communicated to the
-                                                referring hospital.
-                                            </DialogDescription>
-                                        </DialogHeader>
-                                        <div className="space-y-4">
-                                            <div className="space-y-2">
-                                                <Label htmlFor="reason">Rejection Reason</Label>
-                                                {/* <Textarea
-                                                    id="reason"
-                                                    placeholder="Please explain why this referral cannot be accepted..."
-                                                    value={rejectionReason}
-                                                    onChange={(e) => setRejectionReason(e.target.value)}
-                                                    rows={3}
-                                                /> */}
-                                            </div>
-                                            <div className="flex justify-end gap-2">
-                                                <Button variant="outline">Cancel</Button>
-                                                {/* <Button
-                                                    variant="destructive"
-                                                    onClick={() => {
-                                                        rejectReferral(referral.id, rejectionReason)
-                                                        setRejectionReason("")
-                                                    }}
-                                                    disabled={!rejectionReason.trim()}
-                                                >
-                                                    Reject Referral
-                                                </Button> */}
-                                            </div>
-                                        </div>
-                                    </DialogContent>
-                                </Dialog>
-
+                                <Button variant="destructive" onClick={onReject} >
+                                    Reject Referral
+                                </Button>
+                            
                                 <Button
-                                    onClick={() => acceptReferral(referral.id)}
+                                    onClick={onApprove}
                                     className="bg-trust-green hover:bg-trust-green/90 text-trust-green-foreground"
                                 >
                                     <CheckCircle className="w-4 h-4 mr-2" />
@@ -549,9 +621,19 @@ const ReferralCard = ({ referral }) => (
                             </>
                         )}
 
-                        {referral.status === "accepted" && (
+                        { type === "my_referrals" && referral.status === "pending" && (
+                           <Button
+                                onClick={onCancel}
+                                className="bg-orange-500 hover:bg-orange-600 text-white"
+                            >
+                                <XCircle className="w-4 h-4 mr-2" />
+                                Cancel Referral
+                            </Button>
+                        )}
+
+                        {type === "manage_referrals" && referral.status === "approved" && (
                             <Button
-                                onClick={() => completeReferral(referral.id)}
+                                onClick={onComplete}
                                 className="bg-medical-blue hover:bg-medical-blue/90"
                             >
                                 <CheckCircle className="w-4 h-4 mr-2" />

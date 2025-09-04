@@ -46,7 +46,7 @@ const navigationItems = [
         title: "Manage Referrals",
         url: "/referrals/manage",
         icon: ClipboardList,
-        badge: "3", // Mock pending count
+        badge: "3", // I'll come back here
     },
     {
         title: "Hospital Search",

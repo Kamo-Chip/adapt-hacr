@@ -355,7 +355,7 @@ export async function getSpecificReferrals(clerk_id) {
 
   const { data, error } = await supabase
     .from("referrals")
-    .select("*")
+    .select(`*, from_hospital_id: from_hospital_id (id, name), to_hospital : to_hospital_id (id, name)`) // include from_hospital name
     .eq("to_hospital_id", hospital_id)
     .eq("status", "pending")
     .eq("referral_type", "specific")
@@ -374,7 +374,7 @@ export async function getGeneralReferrals(clerk_id) {
 
   const { data, error } = await supabase
     .from("referrals")
-    .select("*")
+    .select(`*, from_hospital_id: from_hospital_id (id, name), to_hospital : to_hospital_id (id, name)`)
     .eq("to_hospital_id", hospital_id)
     .eq("status", "pending")
     .eq("referral_type", "general")
@@ -385,7 +385,10 @@ export async function getGeneralReferrals(clerk_id) {
 
 // ACTIONS (singular, by referral id)
 export async function approveReferral(referralId, clerk_id) {
-  const { data, error } = await supabase()
+  const supabase = createClient();
+
+  console.log("[approveReferral] start:", {referralId, clerk_id});
+  const { data: referral, error } = await supabase
     .from("referrals")
     .update({
       status: "approved",
@@ -398,11 +401,23 @@ export async function approveReferral(referralId, clerk_id) {
     .select("*")
     .single();
   if (error) throw error;
-  return data;
+
+  const capacityUpdate = await supabase
+    .from("hospital_capacity")
+    .update({
+      capacity_available: supabase.raw("capacity_available - 1"),
+      last_updated: new Date().toISOString(),
+    })
+    .eq("hospital_id", referral.to_hospital_id)
+    .eq("department", referral.department)
+    .gt("capacity_available", 0); // ensure we don't go negative
+  return referral;
 }
 
 export async function rejectReferral(referralId, reason = null) {
-  const { data, error } = await supabase()
+  const supabase = createClient();
+
+  const { data, error } = await supabase
     .from("referrals")
     .update({
       status: "rejected",                  // or "pending" + assigned_to_user_id: null (see below)
@@ -419,7 +434,9 @@ export async function rejectReferral(referralId, reason = null) {
 }
 
 export async function declineReferral(referralId, reason = null) {
-  const { data, error } = await supabase()
+  const supabase = createClient();
+
+  const { data, error } = await supabase
     .from("referrals")
     .update({
       status: "pending",
@@ -436,7 +453,9 @@ export async function declineReferral(referralId, reason = null) {
 }
 
 export async function completeReferral(referralId, clerk_id) {
-  const { data, error } = await supabase()
+  const supabase = createClient();
+
+  const { data, error } = await supabase
     .from("referrals")
     .update({
       status: "completed",
@@ -450,4 +469,55 @@ export async function completeReferral(referralId, clerk_id) {
     .single();
   if (error) throw error;
   return data;
+}
+
+export async function getMyReferrals(clerk_id) {
+  const supabase = createClient();
+
+  const { data, error } = await supabase
+    .from("referrals")
+    .select(`*, from_hospital_id: from_hospital_id (id, name), to_hospital : to_hospital_id (id, name)`)
+    .eq("created_by_user_id", clerk_id)
+    .order("created_at", { ascending: false });
+  if(error) throw error;
+  return data ?? [];
+}
+
+export async function getApprovedReferrals(clerk_id){
+  const supabase = createClient();
+  const hospital_id = await userHospital(clerk_id);
+
+  if(!hospital_id) return [];
+  const { data, error } = await supabase
+    .from("referrals")
+    .select(`*, from_hospital_id: from_hospital_id (id, name), to_hospital : to_hospital_id (id, name)`)
+    .eq("to_hospital_id", hospital_id)
+    .eq("status", "approved")
+    .order("responded_at", { ascending: false });
+  if(error) throw error;
+  return data ?? [];
+
+}
+
+export async function cancelReferral(referralId, clerk_id) {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("referrals")
+    .update({
+      status: "cancelled",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", referralId)
+    .eq("created_by_user_id", clerk_id) // only creator can cancel
+    .in("status", ["pending", "approved"]) // only if not already completed/rejected
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function userHospitalId(clerk_id) {
+  const supabase = createClient();
+  const hospital_id = await userHospital(clerk_id);
+  return hospital_id;
 }
