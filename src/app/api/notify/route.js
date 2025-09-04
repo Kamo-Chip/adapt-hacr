@@ -13,7 +13,7 @@ export async function POST(req) {
     type === "initial"
       ? `Hi ${name}, your referral has been created for ${dateStr}. We will notify you once the receiving hospital confirms.`
       : type === "confirmed"
-      ? `Hi ${name}, your referral has been confirmed for ${dateStr} at ${timeStr}.`
+      ? `Hi ${name}, your referral has been confirmed for ${dateStr}. Please come at 09:00 AM.`
       : type === "cancelled"
       ? `Hi ${name}, your referral has been cancelled. If you have any questions, please contact us.`
       : "";

@@ -122,7 +122,7 @@ export default function ReferralManagePage() {
                 body: JSON.stringify({
                     to: result.patient_phone_number,
                     name: result.patient_name,
-                    dateStr: result.preferred_date, 
+                    dateStr: result.preferred_referral_date, 
                     type: "confirmed",
                 }),
                 headers: {
