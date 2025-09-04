@@ -3,3 +3,4 @@ fastapi    #for building the API
 uvicorn    #for running the fast API application
 ollama     #for interfacing with ollama to use a local llm
 requests   #for sending request
+pydantic
