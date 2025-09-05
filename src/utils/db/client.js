@@ -603,3 +603,147 @@ export async function getHospitalById(hospitalId) {
   if (error) throw error;
   return data;
 }
+
+export const fetchProfile = async (clerk_id) => {
+  const supabase = createClient();
+
+  // 1. Find hospital_id from users table
+  const { data: userRow, error: userError } = await supabase
+    .from("users")
+    .select("hospital_id")
+    .eq("clerk_id", clerk_id)
+    .maybeSingle();
+
+  if (userError) {
+    console.error("Error fetching hospital ID:", userError);
+    throw userError;
+  }
+
+  const hospital_id = userRow?.hospital_id;
+
+  if (!hospital_id) {
+    return {}; // user exists but no hospital linked
+  }
+
+  // 2. Fetch hospital row
+  const { data: hospital, error: hospitalError } = await supabase
+    .from("hospitals")
+    .select("*")
+    .eq("id", hospital_id)
+    .single();
+
+  if (hospitalError) {
+    console.error("Error fetching hospital:", hospitalError);
+    throw hospitalError;
+  }
+
+  return hospital;
+};
+
+export const fetchDepartments = async (h_id) => {
+  const supabase = createClient();
+
+  const { data, error } = await supabase
+    .from("hospital_capacity")
+    .select("*")
+    .eq("hospital_id", h_id);
+
+  if (error) {
+    console.error("Error fetching hospital ID:", error);
+    throw error;
+  }
+
+  return data;
+};
+
+export const updateHospital = async (formData) => {
+  const supabase = createClient();
+
+  const { error } = await supabase
+    .from("referrals")
+    .upsert([
+      {
+        name: formData.name,
+        type: formData.type,
+        address_line1: formData.address_line1,
+        city: formData.city,
+        province: formData.province,
+        postal_code: formData.postal_code,
+        country: formData.country,
+        email: formData.email,
+        whatsapp_number: formData.whatsapp_number,
+        website: formData.website,
+        updated_at: new Date(Date.now),
+      },
+    ])
+    .select();
+
+  if (error) {
+    console.error("Error creating referral:", error);
+    throw error;
+  }
+};
+
+export const isAdmin = async (c_id) => {
+  const supabase = createClient();
+
+  const { data, error } = await supabase
+    .from("users")
+    .select("role")
+    .eq("clerk_id", c_id)
+    .maybeSingle();
+
+  if(error){
+    console.error("Error creating referral:", error);
+    throw error;
+  }
+
+  return data?.role === "administrator"
+};
+
+export const addDepartmentToDB = async (department) => {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('hospital_capacity')
+    .insert([department])
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Error adding department:", error);
+    throw error;
+  }
+
+  return data;
+};
+
+export const updateDepartmentInDB = async (id, updates) => {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('hospital_capacity')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Error updating department:", error);
+    throw error;
+  }
+
+  return data;
+};
+
+export const removeDepartmentFromDB = async (id) => {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from('hospital_capacity')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error("Error removing department:", error);
+    throw error;
+  }
+};
+
