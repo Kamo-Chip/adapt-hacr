@@ -5,7 +5,7 @@ import re
 
 app = FastAPI()
 
-OLLAMA_API = "https://ac8b46fa33a1.ngrok-free.app"
+OLLAMA_API = "https://archives-listen-slow-bernard.trycloudflare.com"
 
 class QueryRequest(BaseModel):
     prompt: str
@@ -15,7 +15,7 @@ def query(request: QueryRequest):
     # Call your remote Ollama instance via ngrok
     response = requests.post(
         f"{OLLAMA_API}/api/generate",
-        headers={"Authorization" : "Bearer 32FINvNatrMelr0R3htkuhuITTA_4oHkmhjyDsQd4YswLYAsa"},
+        #headers={"Authorization" : "Bearer 32FINvNatrMelr0R3htkuhuITTA_4oHkmhjyDsQd4YswLYAsa"},
         json={
             "model": "qwen3:8b",
             "messages": [
