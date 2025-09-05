@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { User, Phone, FileText, Upload, CalendarIcon, Shield, Search, X, CheckCircle, AlertCircle } from "lucide-react"
+import { User, Phone, FileText, Upload, CalendarIcon, Shield, Search, X, CheckCircle, AlertCircle, Circle, CircleSmall } from "lucide-react"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import { createReferral, fetchHospitals, findOptimalHospital, validHospitalSelection, saveDraft } from "@/utils/db/client"
@@ -26,7 +26,8 @@ import {
     TooltipTrigger,
 } from "@/components/ui/tooltip"
 
-import toast from "react-hot-toast"
+import { toast } from "sonner"
+import clsx from "clsx"
 
 const urgencyLevels = [
     { value: "high", label: "High Priority", color: "red-500", description: "Immediate attention required" },
@@ -222,21 +223,35 @@ export default function CreateReferralPage() {
                 .delete()
                 .eq("user_id", user.id);
 
-            await createReferral(submissionData, documents, chosenHospital, referralType, user.id);
-            toast.success("Referral submitted successfully!");
-            await fetch(`/api/notify`, {
-                method: "POST",
-                body: JSON.stringify({
-                    to: formData.whatsappNumber,
-                    name: formData.patientName,
-                    dateStr: date.toLocaleDateString(),
-                    type: "initial",
-                }),
-                headers: {
-                    "Content-Type": "application/json",
-                },
-            });
-            resetForm();
+            const result = await createReferral(submissionData, documents, chosenHospital, referralType, user.id);
+            console.log(result);
+            if (result) {
+                toast.success("Referral submitted successfully!");
+
+                // Kick off AI summary generation
+                fetch(`/api/referrals/summarise`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ referralId: result.id }),
+                });
+
+                fetch(`/api/notify`, {
+                    method: "POST",
+                    body: JSON.stringify({
+                        to: formData.whatsappNumber,
+                        name: formData.patientName,
+                        dateStr: date.toLocaleDateString(),
+                        type: "initial",
+                    }),
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                });
+
+                resetForm();
+            }
+
+
         } catch (err) {
             console.error(err);
             toast.error(err?.message || err?.error?.message || "Something went wrong");
@@ -331,7 +346,7 @@ export default function CreateReferralPage() {
                         <CardContent className="space-y-6">
                             <div className="grid grid-cols-1 gap-6">
                                 <div className="space-y-2">
-                                    <Label htmlFor="patientName">Patient Full Name *</Label>
+                                    <Label htmlFor="patientName">Patient Full Name <span className="text-red-500">*</span></Label>
                                     <div className="relative">
                                         <Input
                                             id="patientName"
@@ -360,7 +375,7 @@ export default function CreateReferralPage() {
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
-                                    <Label htmlFor="whatsappNumber">Phone number *</Label>
+                                    <Label htmlFor="whatsappNumber">Phone number <span className="text-red-500">*</span></Label>
                                     <div className="relative flex">
                                         <div className="flex items-center px-3 border border-r-0 rounded-l-md bg-muted">
                                             <Phone className="w-4 h-4 text-trust-green" />
@@ -419,7 +434,7 @@ export default function CreateReferralPage() {
                         <CardContent className="space-y-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
-                                    <Label htmlFor="department">Medical Department *</Label>
+                                    <Label htmlFor="department">Medical Department <span className="text-red-500">*</span></Label>
                                     <div className="relative">
                                         <Select value={formData.department} onValueChange={(value) => handleInputChangeValidated("department", value)}>
                                             <SelectTrigger className={errors.department ? "border-red-500 focus:border-red-500 focus:ring-red-500" : ""}>
@@ -446,7 +461,7 @@ export default function CreateReferralPage() {
                                     </div>
                                 </div>
                                 <div className="space-y-2">
-                                    <Label htmlFor="urgency">Urgency Level *</Label>
+                                    <Label htmlFor="urgency">Urgency Level <span className="text-red-500">*</span></Label>
                                     <div className="relative">
                                         <Select value={formData.urgency} onValueChange={(value) => handleInputChangeValidated("urgency", value)}>
                                             <SelectTrigger className={errors.urgency ? "border-red-500 focus:border-red-500 focus:ring-red-500" : ""}>
@@ -456,7 +471,12 @@ export default function CreateReferralPage() {
                                                 {urgencyLevels.map((level) => (
                                                     <SelectItem key={level.value} value={level.value}>
                                                         <div className="flex items-center gap-2">
-                                                            <div className={cn(`w-2 h-2 rounded-full bg-${level.color}`)} />
+
+                                                            <CircleSmall className={clsx(`w-2 h-2 rounded-full`, {
+                                                                "text-urgent-red": level.value.toLowerCase() === "high",
+                                                                "text-warning-amber": level.value.toLowerCase() === "medium",
+                                                                "text-trust-green": level.value.toLowerCase() === "low"
+                                                            })} fill="currentColor" stroke="none" />
                                                             <span>{level.label}</span>
                                                         </div>
                                                     </SelectItem>
@@ -478,7 +498,7 @@ export default function CreateReferralPage() {
                             </div>
 
                             <div className="space-y-2">
-                                <Label htmlFor="medicalCondition">Medical Condition *</Label>
+                                <Label htmlFor="medicalCondition">Medical Condition <span className="text-red-500">*</span></Label>
                                 <div className="relative">
                                     <Textarea
                                         id="medicalCondition"
@@ -502,7 +522,7 @@ export default function CreateReferralPage() {
                             </div>
 
                             <div className="space-y-2">
-                                <Label htmlFor="reasonForReferral">Reason for Referral *</Label>
+                                <Label htmlFor="reasonForReferral">Reason for Referral <span className="text-red-500">*</span></Label>
                                 <div className="relative">
                                     <Textarea
                                         id="reasonForReferral"
@@ -532,7 +552,7 @@ export default function CreateReferralPage() {
                                         id="allergies"
                                         value={formData.allergies}
                                         onChange={(e) => handleInputChangeValidated("allergies", e)}
-                                        placeholder="List any known allergies"
+                                        placeholder="List any known allergies as comma-separated values"
                                         rows={2}
                                     />
                                 </div>
@@ -542,7 +562,7 @@ export default function CreateReferralPage() {
                                         id="medications"
                                         value={formData.medications}
                                         onChange={(e) => handleInputChangeValidated("medications", e)}
-                                        placeholder="List current medications"
+                                        placeholder="List current medications as comma-separated values"
                                         rows={2}
                                     />
                                 </div>
@@ -587,7 +607,6 @@ export default function CreateReferralPage() {
                                                 <FileText className="w-4 h-4 text-muted-foreground" />
                                                 <div>
                                                     <p className="text-sm font-medium">{file.name}</p>
-                                                    <p className="text-xs text-muted-foreground">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
                                                 </div>
                                             </div>
                                             <Button
@@ -736,7 +755,7 @@ export default function CreateReferralPage() {
                                             htmlFor="medicalConsent"
                                             className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                                         >
-                                            Medical Information Consent *
+                                            Medical Information Consent <span className="text-red-500">*</span>
                                         </Label>
                                         <p className="text-xs text-muted-foreground">
                                             Patient consents to sharing medical information with the receiving hospital for treatment purposes.
@@ -755,7 +774,7 @@ export default function CreateReferralPage() {
                                             htmlFor="whatsappConsent"
                                             className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                                         >
-                                            WhatsApp Communication Consent *
+                                            WhatsApp Communication Consent <span className="text-red-500">*</span>
                                         </Label>
                                         <p className="text-xs text-muted-foreground">
                                             Patient consents to receiving referral updates and appointment notifications via WhatsApp.

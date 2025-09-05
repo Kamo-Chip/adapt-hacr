@@ -36,7 +36,7 @@ import {
     XCircle
 } from "lucide-react"
 import { useEffect, useState } from "react"
-import toast from "react-hot-toast"
+import { toast } from "sonner"
 
 export default function ReferralManagePage() {
     const [referrals, setReferrals] = useState([]);
@@ -431,7 +431,7 @@ const ReferralCard = ({ referral, type, onApprove, onReject, onComplete, onCance
                     </div>
 
                     {/* AI Summary */}
-                    <Card className="bg-medical-blue/5 border-medical-blue/20">
+                    {referral.ai_summary && (<Card className="bg-medical-blue/5 border-medical-blue/20">
                         <CardContent className="p-4">
                             <div className="flex items-start gap-3">
                                 <div className="w-8 h-8 bg-medical-blue/10 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -443,7 +443,8 @@ const ReferralCard = ({ referral, type, onApprove, onReject, onComplete, onCance
                                 </div>
                             </div>
                         </CardContent>
-                    </Card>
+                    </Card>)}
+
 
                     {/* Patient & Referring Info */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -307,7 +307,7 @@ export const createReferral = async (
     doc_urls.push(doc_url);
   }
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("referrals")
     .insert([
       {
@@ -336,6 +336,8 @@ export const createReferral = async (
     console.error("Error creating referral:", error);
     throw error;
   }
+
+  return data[0] || null;
 };
 
 export const uploadDoc = async (file, bucket, clerk_id, filename) => {
@@ -693,18 +695,18 @@ export const isAdmin = async (c_id) => {
     .eq("clerk_id", c_id)
     .maybeSingle();
 
-  if(error){
+  if (error) {
     console.error("Error creating referral:", error);
     throw error;
   }
 
-  return data?.role === "administrator"
+  return data?.role === "administrator";
 };
 
 export const addDepartmentToDB = async (department) => {
   const supabase = createClient();
   const { data, error } = await supabase
-    .from('hospital_capacity')
+    .from("hospital_capacity")
     .insert([department])
     .select()
     .single();
@@ -720,9 +722,9 @@ export const addDepartmentToDB = async (department) => {
 export const updateDepartmentInDB = async (id, updates) => {
   const supabase = createClient();
   const { data, error } = await supabase
-    .from('hospital_capacity')
+    .from("hospital_capacity")
     .update(updates)
-    .eq('id', id)
+    .eq("id", id)
     .select()
     .single();
 
@@ -737,13 +739,12 @@ export const updateDepartmentInDB = async (id, updates) => {
 export const removeDepartmentFromDB = async (id) => {
   const supabase = createClient();
   const { error } = await supabase
-    .from('hospital_capacity')
+    .from("hospital_capacity")
     .delete()
-    .eq('id', id);
+    .eq("id", id);
 
   if (error) {
     console.error("Error removing department:", error);
     throw error;
   }
 };
-

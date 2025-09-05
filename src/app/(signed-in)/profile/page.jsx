@@ -15,7 +15,7 @@ import { DEPARTMENTS } from "@/app/onboard/page"
 import { useUser } from "@clerk/nextjs"
 import { fetchProfile, fetchDepartments, isAdmin, addDepartmentToDB, updateDepartmentInDB, removeDepartmentFromDB, userHospital } from "@/utils/db/client"
 import Loading from "@/components/loading"
-import toast from "react-hot-toast"
+import { toast } from "sonner"
 
 export default function ProfilePage() {
     const { user, isLoaded } = useUser();
@@ -48,7 +48,7 @@ export default function ProfilePage() {
 
     useEffect(() => {
         const loadData = async () => {
-            if(!isLoaded || !user){
+            if (!isLoaded || !user) {
                 setLoading(false);
                 return;
             }
@@ -111,55 +111,55 @@ export default function ProfilePage() {
     }
 
     const addDepartment = async () => {
-    if (!newDepartment) {
-        toast.error("Please select a department to add");
-        return;
-    }
+        if (!newDepartment) {
+            toast.error("Please select a department to add");
+            return;
+        }
 
-    // Check for duplicates
-    if (departments.find((d) => d.department === newDepartment)) {
-        toast.error("This department already exists");
-        return;
-    }
+        // Check for duplicates
+        if (departments.find((d) => d.department === newDepartment)) {
+            toast.error("This department already exists");
+            return;
+        }
 
-    try {
-        // Create new department with default values
-        const newDept = {
-            hospital_id: hospitalId,
-            department: newDepartment,
-            capacity_total: 0,
-            capacity_available: 0,
-            hod: "",
-            phone: "",
-            email: "",
-        };
+        try {
+            // Create new department with default values
+            const newDept = {
+                hospital_id: hospitalId,
+                department: newDepartment,
+                capacity_total: 0,
+                capacity_available: 0,
+                hod: "",
+                phone: "",
+                email: "",
+            };
 
-        // Add to database
-        const savedDept = await addDepartmentToDB(newDept);
-        
-        // Ensure all fields have proper values
-        const safeDept = {
-            ...savedDept,
-            capacity_total: savedDept.capacity_total || 0,
-            capacity_available: savedDept.capacity_available || 0,
-            hod: savedDept.hod || "",
-            phone: savedDept.phone || "",
-            email: savedDept.email || ""
-        };
-        
-        // Update local state
-        setDepartments([...departments, safeDept]);
-        setNewDepartment("");
-        
-        // Add to editing state
-        setEditingDepartments(prev => ({...prev, [safeDept.id]: true}));
-        
-        toast.success("Department added successfully. Please fill in the details and click Update.");
-    } catch (error) {
-        console.error("Failed to add department:", error);
-        toast.error("Failed to add department");
-    }
-};
+            // Add to database
+            const savedDept = await addDepartmentToDB(newDept);
+
+            // Ensure all fields have proper values
+            const safeDept = {
+                ...savedDept,
+                capacity_total: savedDept.capacity_total || 0,
+                capacity_available: savedDept.capacity_available || 0,
+                hod: savedDept.hod || "",
+                phone: savedDept.phone || "",
+                email: savedDept.email || ""
+            };
+
+            // Update local state
+            setDepartments([...departments, safeDept]);
+            setNewDepartment("");
+
+            // Add to editing state
+            setEditingDepartments(prev => ({ ...prev, [safeDept.id]: true }));
+
+            toast.success("Department added successfully. Please fill in the details and click Update.");
+        } catch (error) {
+            console.error("Failed to add department:", error);
+            toast.error("Failed to add department");
+        }
+    };
 
     const removeDepartment = async (id) => {
         try {
@@ -315,7 +315,7 @@ export default function ProfilePage() {
                                     <div className="space-y-2">
                                         <Label htmlFor="type">Facility Type</Label>
                                         <Select
-                                            value={profile.type} 
+                                            value={profile.type}
                                             onValueChange={(value) => setProfile({ ...profile, type: value })}
                                             disabled={!isEditing}
                                         >
@@ -404,7 +404,7 @@ export default function ProfilePage() {
                                         <Label htmlFor="postal">Postal Code</Label>
                                         <Input
                                             id="postal"
-                                            value={profile.postal_code?? ""}
+                                            value={profile.postal_code ?? ""}
                                             onChange={(e) => setProfile({ ...profile, postal_code: e.target.value })}
                                             disabled={!isEditing}
                                         />
