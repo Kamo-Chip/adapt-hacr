@@ -64,11 +64,6 @@ const navigationItems = [
 
 const secondaryItems = [
     {
-        title: "Settings",
-        url: "/settings",
-        icon: Settings,
-    },
-    {
         title: "Notifications",
         url: "/notifications",
         icon: Bell,
@@ -118,12 +113,6 @@ export function AppSidebar() {
 
         fetchData();
     }, [user])
-
-    useEffect(() => {
-
-        console.log("User's hospital:", userHospital);
-    }, [userHospital]);
-
     return (
         <Sidebar collapsible="icon">
             <SidebarHeader>

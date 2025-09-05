@@ -30,7 +30,7 @@ const referralStats = {
 const capacityData = [
     { hospital: "South Africatta National", current: 1200, total: 2000, percentage: 60 },
     { hospital: "Aga Khan", current: 180, total: 254, percentage: 71 },
-    { hospital: "Nairobi Hospital", current: 220, total: 350, percentage: 63 },
+    { hospital: "Johannesburg Hospital", current: 220, total: 350, percentage: 63 },
     { hospital: "Mater Hospital", current: 190, total: 300, percentage: 63 },
     { hospital: "Karen Hospital", current: 85, total: 120, percentage: 71 },
 ]
@@ -315,7 +315,7 @@ export default function DashboardPage() {
                                     patient: "John Doe",
                                     id: "REF-2024-001234",
                                     department: "Cardiology",
-                                    hospital: "Nairobi Hospital",
+                                    hospital: "Johannesburg Hospital",
                                     status: "accepted",
                                     time: "2 hours ago",
                                     urgency: "high",

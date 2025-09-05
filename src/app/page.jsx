@@ -39,7 +39,7 @@ export default function LandingPage() {
     const [isPageLoading, setIsPageLoading] = useState(true);
     const router = useRouter();
     const userId = user?.id ?? null;
-    useEffect(() => { 
+    useEffect(() => {
         if (!isLoaded) return;
 
         const redirectToDashboard = () => {
@@ -139,7 +139,7 @@ export default function LandingPage() {
                 <div className="container mx-auto max-w-6xl">
                     <div className="text-center space-y-6">
                         <Badge variant="secondary" className="mb-4">
-                            Streamlining Healthcare Referrals
+                            ⚕️ Streamlining Healthcare Referrals
                         </Badge>
                         <h1 className="text-4xl md:text-6xl font-bold text-balance leading-tight">
                             Connect Hospitals,{" "}
@@ -152,18 +152,10 @@ export default function LandingPage() {
                         </p>
                         <div className="flex flex-col sm:flex-row gap-4 justify-center pt-6">
                             <Button size="lg" className="text-lg px-8" asChild>
-                                <Link href="/register">
+                                <Link href="/sign-up">
                                     Start Referring Patients
                                     <ArrowRight className="ml-2 w-5 h-5" />
                                 </Link>
-                            </Button>
-                            <Button
-                                size="lg"
-                                variant="outline"
-                                className="text-lg px-8 bg-transparent"
-                                asChild
-                            >
-                                <Link href="/demo">Watch Demo</Link>
                             </Button>
                         </div>
                     </div>
@@ -388,7 +380,7 @@ export default function LandingPage() {
                                         </div>
                                         <div className="flex justify-between">
                                             <span className="text-sm">
-                                                Hospital: Nairobi Hospital
+                                                Hospital: Johannesburg Hospital
                                             </span>
                                             <span className="text-sm text-muted-foreground">
                                                 2.3km away
@@ -423,18 +415,10 @@ export default function LandingPage() {
                         </p>
                         <div className="flex flex-col sm:flex-row gap-4 justify-center pt-6">
                             <Button size="lg" className="text-lg px-8" asChild>
-                                <Link href="/register">
-                                    Start Free Trial
+                                <Link href="/sign-up">
+                                    Start Referring Patients
                                     <ArrowRight className="ml-2 w-5 h-5" />
                                 </Link>
-                            </Button>
-                            <Button
-                                size="lg"
-                                variant="outline"
-                                className="text-lg px-8 bg-transparent"
-                                asChild
-                            >
-                                <Link href="/contact">Schedule Demo</Link>
                             </Button>
                         </div>
                     </div>
@@ -468,13 +452,13 @@ export default function LandingPage() {
                                     Features
                                 </Link>
                                 <Link
-                                    href="/pricing"
+                                    href="#"
                                     className="block text-muted-foreground hover:text-foreground transition-colors"
                                 >
                                     Pricing
                                 </Link>
                                 <Link
-                                    href="/demo"
+                                    href="#"
                                     className="block text-muted-foreground hover:text-foreground transition-colors"
                                 >
                                     Demo
@@ -486,19 +470,19 @@ export default function LandingPage() {
                             <h3 className="font-semibold">Support</h3>
                             <div className="space-y-2 text-sm">
                                 <Link
-                                    href="/help"
+                                    href="#"
                                     className="block text-muted-foreground hover:text-foreground transition-colors"
                                 >
                                     Help Center
                                 </Link>
                                 <Link
-                                    href="/docs"
+                                    href="#"
                                     className="block text-muted-foreground hover:text-foreground transition-colors"
                                 >
                                     Documentation
                                 </Link>
                                 <Link
-                                    href="/contact"
+                                    href="#"
                                     className="block text-muted-foreground hover:text-foreground transition-colors"
                                 >
                                     Contact Us
@@ -511,11 +495,11 @@ export default function LandingPage() {
                             <div className="space-y-2 text-sm text-muted-foreground">
                                 <div className="flex items-center gap-2">
                                     <Phone className="w-4 h-4" />
-                                    <span>+254-700-123-456</span>
+                                    <span>+27 72 480 1111</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <MapPin className="w-4 h-4" />
-                                    <span>Nairobi, South Africa</span>
+                                    <span>Johannesburg, South Africa</span>
                                 </div>
                             </div>
                         </div>
@@ -523,7 +507,7 @@ export default function LandingPage() {
 
                     <div className="border-t mt-12 pt-8 text-center text-sm text-muted-foreground">
                         <p>
-                            &copy; 2024 MedRef. All rights reserved. | Privacy Policy | Terms
+                            &copy; {new Date().getFullYear()} MedRef. All rights reserved. | Privacy Policy | Terms
                             of Service
                         </p>
                     </div>

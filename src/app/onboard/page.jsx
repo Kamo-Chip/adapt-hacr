@@ -352,7 +352,7 @@ export default function OnboardPage() {
                                     value={facilityData.location}
                                     onChange={(value) => handleInputChange("location", value, true)}
                                     onSelect={handleFacilityLocationSelect}
-                                    placeholder="e.g., Nairobi, South Africa"
+                                    placeholder="e.g., Johannesburg, South Africa"
                                 />
                             </div>
                             <div className="space-y-2">
@@ -361,7 +361,7 @@ export default function OnboardPage() {
                                     id="facilityName"
                                     value={facilityData.name}
                                     onChange={(e) => handleInputChange("name", e.target.value, true)}
-                                    placeholder="e.g., Nairobi Hospital"
+                                    placeholder="e.g., Johannesburg Hospital"
                                 />
                             </div>
                             <div className="grid md:grid-cols-2 gap-4">
