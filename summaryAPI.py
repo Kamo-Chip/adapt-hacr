@@ -5,7 +5,7 @@ import re
 
 app = FastAPI()
 
-OLLAMA_API = "https://1f51630e54e1.ngrok-free.app "
+OLLAMA_API = "https://1f51630e54e1.ngrok-free.app"
 
 class QueryRequest(BaseModel):
     prompt: str
