@@ -275,7 +275,7 @@ export default function LandingPage() {
                                 <div className="w-12 h-12 bg-trust-green/10 rounded-lg flex items-center justify-center mb-4">
                                     <Shield className="w-6 h-6 text-trust-green" />
                                 </div>
-                                <CardTitle>HIPAA Compliant</CardTitle>
+                                <CardTitle>Secure & Compliant</CardTitle>
                                 <CardDescription>
                                     Enterprise-grade security ensures patient data privacy and
                                     regulatory compliance

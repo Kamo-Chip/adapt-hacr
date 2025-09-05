@@ -290,7 +290,7 @@ export default function OnboardPage() {
                                     <Shield className="w-6 h-6 text-medical-blue" />
                                 </div>
                                 <h3 className="font-semibold">Secure & Compliant</h3>
-                                <p className="text-sm text-muted-foreground">HIPAA-compliant platform ensuring patient data privacy</p>
+                                <p className="text-sm text-muted-foreground">Compliant platform ensuring patient data privacy</p>
                             </div>
                         </div>
                     </div>

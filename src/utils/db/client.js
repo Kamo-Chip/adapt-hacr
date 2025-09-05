@@ -90,8 +90,28 @@ export const fetchHospitals = async (clerk_id) => {
 
   return data;
 };
+export const getUserHospital = async (clerk_id) => {
+  const supabase = createClient();
 
-const userHospital = async (clerk_id) => {
+  const hospital_id = await userHospital(clerk_id);
+
+  if (!hospital_id) return null;
+
+  const { data, error } = await supabase
+    .from("hospitals")
+    .select("*")
+    .eq("id", hospital_id)
+    .single();
+
+  if (error) {
+    console.error("Error fetching user's hospital:", error);
+    throw error;
+  }
+
+  return data || null;
+};
+
+export const userHospital = async (clerk_id) => {
   const supabase = createClient();
 
   const { data, error } = await supabase
@@ -369,6 +389,21 @@ export const saveDraft = async (formData, documents, referral, userId) => {
   }
 };
 
+export async function getPendingReferralsCount(clerk_id) {
+  const supabase = createClient();
+  const hospital_id = await userHospital(clerk_id);
+
+  if (!hospital_id) return 0;
+
+  const { count, error } = await supabase
+    .from("referrals")
+    .select("id", { count: "exact", head: true })
+    .eq("to_hospital_id", hospital_id)
+    .eq("status", "pending");
+
+  if (error) throw error;
+  return count || 0;
+}
 //for manage referrals
 export async function getSpecificReferrals(clerk_id) {
   const supabase = createClient();
@@ -432,10 +467,13 @@ export async function approveReferral(referralId, clerk_id) {
   const { data: capacityData, error: capacityError } = await supabase.rpc(
     "decrement_hospital_capacity",
     {
-      hospital_id: referral.to_hospital_id,
-      department: referral.department,
+      p_hospital_id: referral.to_hospital_id,
+      p_department: referral.department,
     }
   );
+
+  if (capacityError) throw capacityError;
+
   return referral;
 }
 
@@ -553,4 +591,15 @@ export async function userHospitalId(clerk_id) {
   const supabase = createClient();
   const hospital_id = await userHospital(clerk_id);
   return hospital_id;
+}
+
+export async function getHospitalById(hospitalId) {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("hospitals")
+    .select("*")
+    .eq("id", hospitalId)
+    .single();
+  if (error) throw error;
+  return data;
 }

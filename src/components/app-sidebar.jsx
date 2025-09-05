@@ -28,7 +28,9 @@ import {
     SidebarMenuItem,
     SidebarRail,
 } from "@/components/ui/sidebar";
+import { getPendingReferralsCount, getUserHospital } from "@/utils/db/client";
 import { UserButton, useUser } from "@clerk/nextjs";
+import { useEffect, useState } from "react";
 
 // Navigation items
 const navigationItems = [
@@ -82,6 +84,45 @@ const secondaryItems = [
 export function AppSidebar() {
     const pathname = usePathname();
     const { user } = useUser();
+    const [referralCount, setReferralCount] = useState(0);
+    const [userHospital, setUserHospital] = useState(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (!user) return;
+        // Fetch the number of pending referrals for the user's hospital
+        async function fetchPendingReferrals() {
+            try {
+                const res = await getPendingReferralsCount(user.id);
+                setReferralCount(res || 0);
+            } catch (error) {
+                console.error("Error fetching referral count:", error);
+            }
+        }
+
+        async function fetchUserHospital() {
+            try {
+                const res = await getUserHospital(user.id);
+                setUserHospital(res || null);
+            } catch (error) {
+                console.error("Error fetching user's hospital:", error);
+            }
+        }
+
+        async function fetchData() {
+            setLoading(true);
+            await fetchPendingReferrals()
+            await fetchUserHospital();
+            setLoading(false);
+        }
+
+        fetchData();
+    }, [user])
+
+    useEffect(() => {
+
+        console.log("User's hospital:", userHospital);
+    }, [userHospital]);
 
     return (
         <Sidebar collapsible="icon">
@@ -120,12 +161,12 @@ export function AppSidebar() {
                                         <Link href={item.url}>
                                             <item.icon />
                                             <span>{item.title}</span>
-                                            {item.badge && (
+                                            {item.url === "/referrals/manage" && referralCount > 0 && (
                                                 <Badge
                                                     variant="secondary"
                                                     className="ml-auto h-5 w-5 shrink-0 items-center justify-center rounded-full bg-urgent-red text-urgent-red-foreground text-xs"
                                                 >
-                                                    {item.badge}
+                                                    {referralCount}
                                                 </Badge>
                                             )}
                                         </Link>
@@ -180,7 +221,7 @@ export function AppSidebar() {
                                         {user?.fullName || ""}
                                     </span>
                                     <span className="truncate text-xs text-muted-foreground">
-                                        Nairobi Hospital {"TODO: Role"}
+                                        {userHospital ? userHospital.name : ""}
                                     </span>
                                 </div>
                             </div>

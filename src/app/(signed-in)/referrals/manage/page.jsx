@@ -4,13 +4,6 @@ import Loading from "@/components/loading"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle
-} from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
     approveReferral,
@@ -18,20 +11,24 @@ import {
     completeReferral,
     getApprovedReferrals,
     getGeneralReferrals,
+    getHospitalById,
     getMyReferrals,
     getSpecificReferrals, // NOTE: updates ALL pending referrals assigned to this clerk_id   // NOTE: updates ALL pending assigned to this clerk_id
     rejectReferral,
     userHospitalId,
 } from "@/utils/db/client.js"
 import { useUser } from "@clerk/nextjs"
+import clsx from "clsx"
 import { format } from "date-fns/format"
 import {
+    AlertTriangle,
     Calendar,
     CheckCircle,
     Clock,
     Download,
     FileText,
     Hospital,
+    Loader2,
     MapPin,
     MessageSquare,
     Phone,
@@ -39,43 +36,15 @@ import {
     XCircle
 } from "lucide-react"
 import { useEffect, useState } from "react"
-import { toast } from "sonner"
-
-const getUrgencyColor = (urgency) => {
-    switch (urgency) {
-        case "high":
-            return "urgent-red"
-        case "medium":
-            return "warning-amber"
-        case "low":
-            return "trust-green"
-        default:
-            return "muted"
-    }
-};
-
-const getStatusColor = (status) => {
-    switch (status) {
-        case "pending":
-            return "warning-amber"
-        case "approved":
-            return "trust-green"
-        case "rejected":
-            return "urgent-red"
-        case "completed":
-            return "medical-blue"
-        default:
-            return "muted"
-    }
-}
+import toast from "react-hot-toast"
 
 export default function ReferralManagePage() {
     const [referrals, setReferrals] = useState([]);
-    const [selectedReferral, setSelectedReferral] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const { user } = useUser();
     const [hospitalId, setHospitalId] = useState(null);
+    const [buttonLoading, setButtonLoading] = useState({});
 
     const loadReferrals = async () => {
         setLoading(true);
@@ -107,22 +76,27 @@ export default function ReferralManagePage() {
 
     /** Approves referrals assigned to this clerk (server fn is bulk by clerkId) */
     const onApprove = async (id) => {
-
         console.log("[onApprove] Called with id:", id);
         if (!user?.id || !id) return toast.error("User not authenticated or no referral selected.");
         setLoading(true);
         setError(null);
 
+        const loadingKey = `${id}_approve`;
+        setButtonLoading((prev) => ({ ...prev, [loadingKey]: true }));
         try {
             const result = await approveReferral(id, user.id);
-            console.log("Referral approved:", result);
-            toast.success("Referral accepted.");
+            // get hospital by id
+            const hospital = await getHospitalById(result.to_hospital_id);
+
             await fetch(`/api/notify`, {
                 method: "POST",
                 body: JSON.stringify({
                     to: result.patient_phone_number,
                     name: result.patient_name,
-                    dateStr: result.preferred_referral_date, 
+                    dateStr: result.preferred_referral_date,
+                    hospital_name: hospital.name,
+                    hospital_address_line1: hospital.address_line1,
+                    hospital_city: hospital.city,
                     type: "confirmed",
                 }),
                 headers: {
@@ -130,52 +104,75 @@ export default function ReferralManagePage() {
                 },
             });
             await loadReferrals();
+            toast.success("Referral accepted.");
         } catch (e) {
             setError(e instanceof Error ? e : new Error("Unknown error"));
             toast.error("Failed to accept referral: " + (e.message || "Unknown error"));
             console.error("Error in onApprove:", e);
         } finally {
+            setButtonLoading((prev) => ({ ...prev, [loadingKey]: false }));
             setLoading(false);
         }
     };
 
     const onReject = async (id) => {
-
         if (!user?.id || !id) return toast.error("User not authenticated or no referral selected.");
 
         setLoading(true);
         setError(null);
 
+        const loadingKey = `${id}_reject`;
+        setButtonLoading((prev) => ({ ...prev, [loadingKey]: true }));
         console.log("Attempting to reject referral:", id, "by user:", user.id);
         try {
             const result = await rejectReferral(id, user.id);
-            toast.success("Referral rejected.");
+
             await loadReferrals();
+            toast.success("Referral rejected.");
         } catch (e) {
             setError(e instanceof Error ? e : new Error("Unknown error"));
             toast.error("Failed to reject referral: " + (e.message || "Unknown error"));
         } finally {
+            setButtonLoading((prev) => ({ ...prev, [loadingKey]: false }));
             setLoading(false);
         }
     };
 
     const onComplete = async (id) => {
-
         if (!user?.id || !id) return toast.error("User not authenticated or no referral selected.");
         setLoading(true);
         setError(null);
 
+        const loadingKey = `${id}_complete`;
+        setButtonLoading((prev) => ({ ...prev, [loadingKey]: true }));
         console.log("Attempting to complete referral:", id, "by user:", user.id);
         try {
             const result = await completeReferral(id, user.id);
-            if (result) toast.success("Referral marked as complete.");
-            else toast.error("Failed to complete referral: " + result.error?.message);
-            await loadReferrals();
+            if (result) {
+                await fetch(`/api/notify`, {
+                    method: "POST",
+                    body: JSON.stringify({
+                        to: result.patient_phone_number,
+                        name: result.patient_name,
+                        dateStr: result.preferred_referral_date,
+                        type: "completed",
+                    }),
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                });
+
+                await loadReferrals();
+                toast.success("Referral marked as complete.");
+            } else {
+                toast.error("Failed to complete referral");
+            }
+
         } catch (e) {
             setError(e instanceof Error ? e : new Error("Unknown error"));
-            toast.error("Failed to complete referral: " + (e.message || "Unknown error"));
             console.error("Error in onComplete:", e);
         } finally {
+            setButtonLoading((prev) => ({ ...prev, [loadingKey]: false }));
             setLoading(false);
         }
     };
@@ -186,16 +183,19 @@ export default function ReferralManagePage() {
         setLoading(true);
         setError(null);
 
+        const loadingKey = `${id}_cancel`;
+        setButtonLoading((prev) => ({ ...prev, [loadingKey]: true }));
         console.log("Attempting to cancel referral:", id, "by user:", user.id);
         try {
             const result = await cancelReferral(id, user.id);
-            if (result) toast.success("Referral marked as cancelled.");
-            else toast.error("Failed to cancel referral: " + result.error?.message);
+
             await loadReferrals();
+            toast.success("Referral marked as cancelled.");
         } catch (e) {
             setError(e instanceof Error ? e : new Error("Unknown error"));
-            toast.error("Failed to cancel referral: " + (e.message || "Unknown error"));
+            toast.error("Failed to cancel referral");
         } finally {
+            setButtonLoading((prev) => ({ ...prev, [loadingKey]: false }));
             setLoading(false);
         }
     };
@@ -281,7 +281,7 @@ export default function ReferralManagePage() {
 
                         <div className="space-y-4">
                             {specificReferrals.map((referral) => (
-                                <ReferralCard key={referral.id} referral={referral} type="specific" onApprove={() => onApprove(referral.id)} onReject={() => onReject(referral.id)} />
+                                <ReferralCard key={referral.id} referral={referral} type="specific" onApprove={() => onApprove(referral.id)} onReject={() => onReject(referral.id)} buttonLoading={buttonLoading} />
                             ))}
                             {specificReferrals.length === 0 && (
                                 <Card className="border-2 border-dashed">
@@ -309,7 +309,7 @@ export default function ReferralManagePage() {
 
                         <div className="space-y-4">
                             {generalReferrals.map((referral) => (
-                                <ReferralCard key={referral.id} referral={referral} type="general" onApprove={() => onApprove(referral.id)} onReject={() => onReject(referral.id)} />
+                                <ReferralCard key={referral.id} referral={referral} type="general" onApprove={() => onApprove(referral.id)} onReject={() => onReject(referral.id)} buttonLoading={buttonLoading} />
                             ))}
                             {generalReferrals.length === 0 && (
                                 <Card className="border-2 border-dashed">
@@ -335,7 +335,7 @@ export default function ReferralManagePage() {
 
                         <div className="space-y-4">
                             {myReferrals.map((referral) => (
-                                <ReferralCard key={referral.id} referral={referral} type="my_referrals" onCancel={() => onCancel(referral.id)} />
+                                <ReferralCard key={referral.id} referral={referral} type="my_referrals" onCancel={() => onCancel(referral.id)} buttonLoading={buttonLoading} />
                             ))}
                             {myReferrals.length === 0 && (
                                 <Card className="border-2 border-dashed">
@@ -361,7 +361,7 @@ export default function ReferralManagePage() {
 
                         <div className="space-y-4">
                             {manageReferrals.map((referral) => (
-                                <ReferralCard key={referral.id} referral={referral} type="manage_referrals" onComplete={() => onComplete(referral.id)} />
+                                <ReferralCard key={referral.id} referral={referral} type="manage_referrals" onComplete={() => onComplete(referral.id)} buttonLoading={buttonLoading} />
                             ))}
                             {manageReferrals.length === 0 && (
                                 <Card className="border-2 border-dashed">
@@ -378,114 +378,42 @@ export default function ReferralManagePage() {
                     </TabsContent>
                 </Tabs>
             </div>
-
-            {/* Detailed View Dialog */}
-            {selectedReferral && (
-                <Dialog open={!!selectedReferral} onOpenChange={() => setSelectedReferral(null)}>
-                    <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-                        <DialogHeader>
-                            <DialogTitle className="flex items-center gap-2">
-                                <FileText className="w-5 h-5" />
-                                Referral Details - {selectedReferral.id}
-                            </DialogTitle>
-                            <DialogDescription>Complete information for this patient referral</DialogDescription>
-                        </DialogHeader>
-
-                        <div className="space-y-6">
-                            {/* Patient Details */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <Card>
-                                    <CardHeader>
-                                        <CardTitle className="text-lg">Patient Information</CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="space-y-3">
-                                        <div className="space-y-2">
-                                            <p>
-                                                <span className="font-medium">Name:</span> {selectedReferral.patient_name}
-                                            </p>
-
-                                            <p>
-                                                <span className="font-medium">Age:</span> {selectedReferral.patient_age || "unknown"} years
-                                            </p>
-                                            <p>
-                                                <span className="font-medium">Gender:</span> {selectedReferral.patient_gender}
-                                            </p>
-                                            {/* <p>
-                                                <span className="font-medium">Phone:</span> {selectedReferral.patient.phone}
-                                            </p> */}
-                                            {/* <p>
-                                                <span className="font-medium">WhatsApp:</span> {selectedReferral.patient.whatsapp}
-                                            </p> */}
-                                        </div>
-                                    </CardContent>
-                                </Card>
-
-                                <Card>
-                                    <CardHeader>
-                                        <CardTitle className="text-lg">Medical Summary</CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="space-y-3">
-                                        <div className="space-y-2">
-                                            <p>
-                                                <span className="font-medium">Condition:</span> {selectedReferral.medical.condition}
-                                            </p>
-                                            <p>
-                                                <span className="font-medium">Department:</span> {selectedReferral.medical.department}
-                                            </p>
-                                            <p>
-                                                <span className="font-medium">Allergies:</span> {selectedReferral.medical.allergies || "None"}
-                                            </p>
-                                            <p>
-                                                <span className="font-medium">Medications:</span>{" "}
-                                                {selectedReferral.medical.medications || "None"}
-                                            </p>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            </div>
-
-                            {/* Clinical Summary */}
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle className="text-lg">Clinical Summary</CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <p className="text-sm">{selectedReferral.medical.summary}</p>
-                                    {selectedReferral.medical.notes && (
-                                        <div className="mt-4 p-3 bg-muted/30 rounded">
-                                            <p className="text-sm">
-                                                <span className="font-medium">Additional Notes:</span> {selectedReferral.medical.notes}
-                                            </p>
-                                        </div>
-                                    )}
-                                </CardContent>
-                            </Card>
-                        </div>
-                    </DialogContent>
-                </Dialog>
-            )}
         </div>
     )
 }
 
 
-const ReferralCard = ({ referral, type, onApprove, onReject, onComplete, onCancel }) => (
+const ReferralCard = ({ referral, type, onApprove, onReject, onComplete, onCancel, buttonLoading = {} }) => {
+    const approveLoading = buttonLoading[`${referral.id}_approve`];
+    const rejectLoading = buttonLoading[`${referral.id}_reject`];
+    const completeLoading = buttonLoading[`${referral.id}_complete`];
+    const cancelLoading = buttonLoading[`${referral.id}_cancel`];
+    return (
+        <Card className="border-2 hover:border-medical-blue/20 transition-colors">
+            <CardContent>
+                <div className="space-y-4">
+                    {/* Header */}
+                    <div className="flex items-start justify-between">
 
-    <Card className="border-2 hover:border-medical-blue/20 transition-colors">
-        <CardContent className="p-6">
-            <div className="space-y-4">
-                {/* Header */}
-                <div className="flex items-start justify-between">
-                    <div className="space-y-2">
                         <div className="flex items-center gap-3">
-                            {/* <h3 className="text-lg font-semibold">{referral.id}</h3> */}
                             <Badge
-                                className={`bg-${getUrgencyColor(referral.urgency)}/10 text-${getUrgencyColor(referral.urgency)} border-${getUrgencyColor(referral.urgency)}/20`}
+                                className={clsx({
+                                    "bg-urgent-red/10 text-urgent-red border-urgent-red/20": referral.urgency === "high",
+                                    "bg-warning-amber/10 text-warning-amber border-warning-amber/20": referral.urgency === "medium",
+                                    "bg-trust-green/10 text-trust-green border-trust-green/20": referral.urgency === "low",
+                                    "muted": !["high", "medium", "low"].includes(referral.urgency),
+                                })}
                             >
                                 {referral.urgency} priority
                             </Badge>
                             <Badge
-                                className={`bg-${getStatusColor(referral.status)}/10 text-${getStatusColor(referral.status)} border-${getStatusColor(referral.status)}/20`}
+                                className={clsx({
+                                    "bg-urgent-red/10 text-urgent-red border-urgent-red/20": referral.status === "rejected",
+                                    "bg-warning-amber/10 text-warning-amber border-warning-amber/20": referral.status === "pending",
+                                    "bg-trust-green/10 text-trust-green border-trust-green/20": referral.status === "approved",
+                                    "bg-medical-blue/10 text-medical-blue border-medical-blue/20": referral.status === "completed",
+                                    "muted": referral.status !== "pending" && referral.status !== "approved" && referral.status !== "rejected" && referral.status !== "completed",
+                                })}
                             >
                                 {referral.status}
                             </Badge>
@@ -493,160 +421,164 @@ const ReferralCard = ({ referral, type, onApprove, onReject, onComplete, onCance
                         <div className="flex items-center gap-4 text-sm text-muted-foreground">
                             <div className="flex items-center gap-1">
                                 <Calendar className="w-4 h-4" />
-                                <span>{format(new Date(referral.created_at), "MMM dd, yyyy 'at' HH:mm")}</span>
+                                <span>Time submitted: {format(new Date(referral.created_at), "MMM dd, yyyy 'at' HH:mm")}</span>
                             </div>
                             <div className="flex items-center gap-1">
                                 <Clock className="w-4 h-4" />
-                                <span>Preferred: {format(new Date(referral.preferred_referral_date), "dd MMM")}</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* AI Summary */}
-                <Card className="bg-medical-blue/5 border-medical-blue/20">
-                    <CardContent className="p-4">
-                        <div className="flex items-start gap-3">
-                            <div className="w-8 h-8 bg-medical-blue/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                                <MessageSquare className="w-4 h-4 text-medical-blue" />
-                            </div>
-                            <div className="space-y-1">
-                                <p className="text-sm font-medium text-medical-blue">AI Summary</p>
-                                <p className="text-sm text-foreground">{referral.ai_summary}</p>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* Patient & Referring Info */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-3">
-                        <div className="flex items-center gap-2">
-                            <User className="w-4 h-4 text-muted-foreground" />
-                            <span className="font-medium">Patient Information</span>
-                        </div>
-                        <div className="space-y-1 text-sm">
-                            <p>
-                                <span className="font-medium">{referral.patient_name}</span> (
-                                {referral.patient_gender})
-                            </p>
-                            <div className="flex items-center gap-1">
-                                <Phone className="w-3 h-3" />
-                                <span>{referral.patient_phone_number}</span>
+                                <span>Preferred Consultation Date: {format(new Date(referral.preferred_referral_date), "dd MMM")}</span>
                             </div>
                         </div>
                     </div>
 
-                    <div className="space-y-3">
-                        <div className="flex items-center gap-2">
-                            <Hospital className="w-4 h-4 text-muted-foreground" />
-                            <span className="font-medium">Referring Hospital</span>
-                        </div>
-                        <div className="space-y-1 text-sm">
-                            <p className="font-medium">{referral.from_hospital_id.name}</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-6">
-                    {/* Medical Information */}
-                    <div className="space-y-3">
-                        <div className="flex items-center gap-2">
-                            <FileText className="w-4 h-4 text-muted-foreground" />
-                            <span className="font-medium">Medical Information</span>
-                        </div>
-                        <div className="space-y-2 text-sm">
-                            <div>
-                                <span className="font-medium">Condition: </span>
-                                <span>{referral.condition_description}</span>
-                            </div>
-                            <div>
-                                <span className="font-medium">Department: </span>
-                                <Badge variant="outline">{referral.department}</Badge>
-                            </div>
-                            {referral.known_allergies && (
-                                <div className="flex items-center gap-2">
-                                    <AlertTriangle className="w-4 h-4 text-urgent-red" />
-                                    <span className="font-medium">Allergies: </span>
-                                    <span className="text-urgent-red">{referral.known_allergies}</span>
+                    {/* AI Summary */}
+                    <Card className="bg-medical-blue/5 border-medical-blue/20">
+                        <CardContent className="p-4">
+                            <div className="flex items-start gap-3">
+                                <div className="w-8 h-8 bg-medical-blue/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                                    <MessageSquare className="w-4 h-4 text-medical-blue" />
                                 </div>
-                            )}
+                                <div className="space-y-1">
+                                    <p className="text-sm font-medium text-medical-blue">AI Summary</p>
+                                    <p className="text-sm text-foreground">{referral.ai_summary}</p>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Patient & Referring Info */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-3">
+                            <div className="flex items-center gap-2">
+                                <User className="w-4 h-4 text-muted-foreground" />
+                                <span className="font-medium">Patient Information</span>
+                            </div>
+                            <div className="space-y-1 text-sm">
+                                <p>
+                                    <span className="font-medium">{referral.patient_name}</span> (
+                                    {referral.patient_gender})
+                                </p>
+                                <div className="flex items-center gap-1">
+                                    <Phone className="w-3 h-3" />
+                                    <span>{referral.patient_phone_number}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <div className="flex items-center gap-2">
+                                <Hospital className="w-4 h-4 text-muted-foreground" />
+                                <span className="font-medium">Referring Hospital</span>
+                            </div>
+                            <div className="space-y-1 text-sm">
+                                <p className="font-medium">{referral.from_hospital_id.name}</p>
+                            </div>
                         </div>
                     </div>
 
-                    {/* Documents */}
-                    {referral.document_urls.length > 0 && (
+                    <div className="grid grid-cols-2 gap-6">
+                        {/* Medical Information */}
                         <div className="space-y-3">
                             <div className="flex items-center gap-2">
                                 <FileText className="w-4 h-4 text-muted-foreground" />
-                                <span className="font-medium">Medical Documents ({referral.document_urls.length})</span>
+                                <span className="font-medium">Medical Information</span>
                             </div>
-                            <div className="grid grid-cols-1 gap-2">
-                                {referral.document_urls.map((doc, index) => (
-                                    <div key={index} className="flex items-center justify-between p-2 border rounded w-full">
-                                        <div className="flex items-center gap-2">
-                                            <FileText className="w-4 h-4 text-muted-foreground" />
-                                            <div>
-                                                <p className="text-sm font-medium">{`File ${index + 1}`}</p>
-                                                <p className="text-xs text-muted-foreground">{doc.size}</p>
-                                            </div>
-                                        </div>
-                                        <Button asChild>
-                                            <a href={doc} target="_blank" rel="noopener noreferrer" download>
-                                                <Download className="w-5 h-5" />
-                                            </a>
-                                        </Button>
-
+                            <div className="space-y-2 text-sm">
+                                <div>
+                                    <span className="font-medium">Condition: </span>
+                                    <span>{referral.condition_description}</span>
+                                </div>
+                                <div>
+                                    <span className="font-medium">Department: </span>
+                                    <Badge variant="outline">{referral.department}</Badge>
+                                </div>
+                                {referral.known_allergies && (
+                                    <div className="flex items-center gap-2">
+                                        <AlertTriangle className="w-4 h-4 text-urgent-red" />
+                                        <span className="font-medium">Allergies: </span>
+                                        <span className="text-urgent-red">{referral.known_allergies}</span>
                                     </div>
-                                ))}
+                                )}
                             </div>
                         </div>
-                    )}
-                </div>
 
+                        {/* Documents */}
+                        {referral.document_urls.length > 0 && (
+                            <div className="space-y-3">
+                                <div className="flex items-center gap-2">
+                                    <FileText className="w-4 h-4 text-muted-foreground" />
+                                    <span className="font-medium">Medical Documents ({referral.document_urls.length})</span>
+                                </div>
+                                <div className="grid grid-cols-1 gap-2">
+                                    {referral.document_urls.map((doc, index) => (
+                                        <div key={index} className="flex items-center justify-between p-2 border rounded w-full">
+                                            <div className="flex items-center gap-2">
+                                                <FileText className="w-4 h-4 text-muted-foreground" />
+                                                <div>
+                                                    <p className="text-sm font-medium">{`File ${index + 1}`}</p>
+                                                    <p className="text-xs text-muted-foreground">{doc.size}</p>
+                                                </div>
+                                            </div>
+                                            <Button asChild>
+                                                <a href={doc} target="_blank" rel="noopener noreferrer" download>
+                                                    <Download className="w-5 h-5" />
+                                                </a>
+                                            </Button>
 
-
-                {/* Actions */}
-                <div className="flex items-center justify-between pt-4 border-t">
-
-                    <div className="flex items-center gap-2 ml-auto">
-                        {(type === "specific" || type === "general") && referral.status === "pending" && (
-                            <>
-                                <Button variant="destructive" onClick={onReject} >
-                                    Reject Referral
-                                </Button>
-
-                                <Button
-                                    onClick={onApprove}
-                                    className="bg-trust-green hover:bg-trust-green/90 text-trust-green-foreground"
-                                >
-                                    <CheckCircle className="w-4 h-4 mr-2" />
-                                    Accept Referral
-                                </Button>
-                            </>
-                        )}
-
-                        {type === "my_referrals" && referral.status === "pending" && (
-                            <Button
-                                onClick={onCancel}
-                                className="bg-orange-500 hover:bg-orange-600 text-white"
-                            >
-                                <XCircle className="w-4 h-4 mr-2" />
-                                Cancel Referral
-                            </Button>
-                        )}
-
-                        {type === "manage_referrals" && referral.status === "approved" && (
-                            <Button
-                                onClick={onComplete}
-                                className="bg-medical-blue hover:bg-medical-blue/90"
-                            >
-                                <CheckCircle className="w-4 h-4 mr-2" />
-                                Mark Complete
-                            </Button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                         )}
                     </div>
+
+
+
+                    {/* Actions */}
+                    <div className="flex items-center justify-between pt-4 border-t">
+
+                        <div className="flex items-center gap-2 ml-auto">
+                            {(type === "specific" || type === "general") && referral.status === "pending" && (
+                                <>
+                                    <Button variant="destructive" onClick={onReject} disabled={rejectLoading} >
+                                        {rejectLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                                        {rejectLoading ? "Rejecting..." : "Reject Referral"}
+                                    </Button>
+
+                                    <Button
+                                        onClick={onApprove}
+                                        className="bg-trust-green hover:bg-trust-green/90 text-trust-green-foreground"
+                                        disabled={approveLoading}
+                                    >
+                                        {approveLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
+                                        {approveLoading ? "Accepting..." : "Accept Referral"}
+                                    </Button>
+                                </>
+                            )}
+
+                            {type === "my_referrals" && referral.status === "pending" && (
+                                <Button
+                                    onClick={onCancel}
+                                    className="bg-orange-500 hover:bg-orange-600 text-white"
+                                    disabled={cancelLoading}
+                                >
+                                    {cancelLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <XCircle className="w-4 h-4 mr-2" />}
+                                    {cancelLoading ? "Cancelling..." : "Cancel Referral"}
+                                </Button>
+                            )}
+
+                            {type === "manage_referrals" && referral.status === "approved" && (
+                                <Button
+                                    onClick={onComplete}
+                                    className="bg-medical-blue hover:bg-medical-blue/90"
+                                    disabled={completeLoading}
+                                >
+                                    {completeLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
+                                    {completeLoading ? "Completing..." : "Mark Complete"}
+                                </Button>
+                            )}
+                        </div>
+                    </div>
                 </div>
-            </div>
-        </CardContent>
-    </Card >);
+            </CardContent>
+        </Card >);
+}

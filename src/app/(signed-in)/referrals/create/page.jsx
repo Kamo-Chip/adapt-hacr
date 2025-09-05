@@ -54,7 +54,6 @@ export default function CreateReferralPage() {
         department: "",
         urgency: "",
         reasonForReferral: "",
-        clinicalSummary: "",
         currentTreatment: "",
         medicalConsent: true,
         whatsappConsent: true,
@@ -80,7 +79,6 @@ export default function CreateReferralPage() {
             department: "",
             urgency: "",
             reasonForReferral: "",
-            clinicalSummary: "",
             currentTreatment: "",
             medicalConsent: true,
             whatsappConsent: true,
@@ -526,16 +524,6 @@ export default function CreateReferralPage() {
                                     )}
                                 </div>
                             </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="clinicalSummary">Clinical Summary</Label>
-                                <Textarea
-                                    id="clinicalSummary"
-                                    value={formData.clinicalSummary}
-                                    onChange={(e) => handleInputChangeValidated("clinicalSummary", e)}
-                                    placeholder="Brief clinical summary and relevant history"
-                                    rows={3}
-                                />
-                            </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
@@ -781,7 +769,7 @@ export default function CreateReferralPage() {
                     {/* Submit Section */}
                     <Card className="border-2 border-medical-blue/20">
                         <CardContent className="p-6">
-                            <div className="flex items-center justify-between">
+                            <div className="flex items-center justify-between gap-4">
                                 <div className="space-y-1">
                                     <h3 className="text-lg font-semibold">Ready to Submit Referral?</h3>
                                     <p className="text-sm text-muted-foreground">
