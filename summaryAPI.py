@@ -14,7 +14,7 @@ class QueryRequest(BaseModel):
 def query(request: QueryRequest):
     # Call your remote Ollama instance via ngrok
     response = requests.post(
-        f"{OLLAMA_API}/api/chat",
+        f"{OLLAMA_API}/api/generate",
         json={
             "model": "qwen3:8b",
             "messages": [
